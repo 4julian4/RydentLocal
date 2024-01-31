@@ -1,0 +1,77 @@
+﻿using Microsoft.EntityFrameworkCore;
+using ServicioRydentLocal.LogicaDelNegocio.Entidades;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ServicioRydentLocal.LogicaDelNegocio.Services
+{
+    public class THORARIOSAGENDAServicios : ITHORARIOSAGENDAServicios
+    {
+        protected readonly AppDbContext _dbcontext;
+        public THORARIOSAGENDAServicios()
+        {
+        }
+
+        public async Task<int> Agregar(THORARIOSAGENDA thorariosagenda)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+
+                _dbcontext.THORARIOSAGENDA.Add(thorariosagenda);
+                await _dbcontext.SaveChangesAsync();
+                return thorariosagenda.SILLA;
+            }
+        }
+
+        public async Task Borrar(int SILLA)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.THORARIOSAGENDA.FirstOrDefaultAsync(x => x.SILLA == SILLA);
+                _dbcontext.THORARIOSAGENDA.Remove(obj);
+                await _dbcontext.SaveChangesAsync();
+            }
+        }
+
+        public async Task<THORARIOSAGENDA> ConsultarPorId(int SILLA)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.THORARIOSAGENDA.FirstOrDefaultAsync(x => x.SILLA == SILLA);
+                return obj == null ? new THORARIOSAGENDA() : obj;
+            }
+        }
+
+
+
+
+        public async Task<bool> Editar(int SILLA, THORARIOSAGENDA thorariosagenda)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.THORARIOSAGENDA.FirstOrDefaultAsync(x => x.SILLA == SILLA);
+                if (obj == null)
+                {
+                    return false;
+                }
+                else
+                {
+                    _dbcontext.Entry(obj).CurrentValues.SetValues(thorariosagenda);
+                    await _dbcontext.SaveChangesAsync();
+                    return true;
+                }
+            }
+        }
+    }
+
+    public interface ITHORARIOSAGENDAServicios
+    {
+        Task<int> Agregar(THORARIOSAGENDA thorariosagenda);
+        Task<bool> Editar(int SILLA, THORARIOSAGENDA thorariosagenda);
+        Task<THORARIOSAGENDA> ConsultarPorId(int SILLA);
+        Task Borrar(int SILLA);
+    }
+}
