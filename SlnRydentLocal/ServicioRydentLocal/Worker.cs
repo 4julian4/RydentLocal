@@ -33,15 +33,17 @@ public class Worker : BackgroundService
     //2. Recibir el pin de acceso de Rydent se usa el evento _hubConnection.On<string, string>("ObtenerPin"
     //3. Autenticar el pin de acceso de Rydent se usando await RecibirPinRydent(pin, clientId);
     //4. Enviar el pin de acceso de Rydent al servidor de Rydent
-    public async Task ConnectToServer()
+    public async Task ConnectToServer() //conectamos al servidor de SR y registramos el equipo
     {
-        _hubConnection.On<string,string>("ReceiveMessage",(user, message) =>
-        {
-            Console.WriteLine($"Usuario Recibido: {user}");
-            Console.WriteLine($"Received message: {System.Environment.MachineName}");
-            Console.WriteLine($"Received message: {message}");
-        });
+        //_hubConnection.On<string,string>("ReceiveMessage",(user, message) =>
+        //{
+        //    Console.WriteLine($"Usuario Recibido: {user}");
+        //    Console.WriteLine($"Received message: {System.Environment.MachineName}");
+        //    Console.WriteLine($"Received message: {message}");
+        //});
 
+        //Cuando el servidor de SR nos envie un mensaje ObtenerPin a nivel local validamos por medio de RecibirPinRydent
+        //el pin de acceso de Rydent si exiiste invocamos la funcion RespuestaObtenerPin que esta en el servidor de SR
         _hubConnection.On<string, string>("ObtenerPin", async (clientId, pin) =>
         {
             await RecibirPinRydent(pin, clientId);
