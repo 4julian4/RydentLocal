@@ -1,11 +1,13 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas;
+using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Numerics;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
 {
-    [Table("TANAMNESIS")]
-    public class TANAMNESIS
+    //[Table("TANAMNESIS")]
+    public class TANAMNESIS 
     {
         [Key]
         public int IDANAMNESIS { set; get; }
@@ -222,5 +224,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
         public string? NUM_INGRESO { set; get; }
         public string? RUTA_FOTOS { set; get; }
         public string? SERVIDOR { set; get; }
+        //public DatosPersonales DatosPersonales { get; set; }
+        //public Antecedentes Antecedentes { get; set; }
     }
 }

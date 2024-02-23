@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
+using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas;
+using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
 
 public class AppDbContext : DbContext
 {
@@ -38,6 +40,8 @@ public class AppDbContext : DbContext
     public DbSet<TCLAVE> TCLAVE { get; set; }
     public DbSet<TDATOSCLIENTES> TDATOSCLIENTES { get; set; }
     public DbSet<TFIRMA> TFIRMA { get; set; }
+    //public DbSet<Antecedentes> Antecedentes { get; set; }
+    //public DbSet<DatosPersonales> DatosPersonales { get; set; }
 
     //[Keyless]
     DbSet<P_BUSCARPACIENTE> P_BUSCARPACIENTE_Result { get; set; }
@@ -63,6 +67,15 @@ public class AppDbContext : DbContext
             .HasKey(c => new { c.SILLA, c.FECHA, c.HORA });
         modelBuilder.Entity<TTRATAMIENTO>()
            .HasKey(c => new { c.IDTRATAMIENTO, c.FECHA });
+        //modelBuilder.Entity<TANAMNESIS>()
+        //   .HasOne(t => t.DatosPersonales)
+        //   .WithOne()
+        //   .HasForeignKey<DatosPersonales>(dp => dp.IDANAMNESIS);
+
+        //modelBuilder.Entity<TANAMNESIS>()
+        //    .HasOne(t => t.Antecedentes)        //    .WithOne()
+        //    .HasForeignKey<Antecedentes>(da => da.IDANAMNESIS);
+        modelBuilder.Entity<TANAMNESIS>().ToTable("TANAMNESIS");
     }
 
 

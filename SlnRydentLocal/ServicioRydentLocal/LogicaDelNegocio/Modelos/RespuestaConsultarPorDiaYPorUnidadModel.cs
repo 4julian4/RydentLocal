@@ -2,17 +2,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Modelos
 {
-    public class RespuestaEvolucionPacienteModel
+    public class RespuestaConsultarPorDiaYPorUnidadModel
     {
-        public TEVOLUCION evolucion { set; get; }
-        public string imgFirmaPaciente { set; get; }
-        public string imgFirmaDoctor { set; get; }
-
+        public TCITAS cita { set; get; } = new TCITAS();
+        public List<TDETALLECITAS> lstDetallaCitas { get; set; } = new List<TDETALLECITAS>();
     }
 }

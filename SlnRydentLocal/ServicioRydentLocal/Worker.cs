@@ -1,9 +1,12 @@
 
 using Microsoft.AspNetCore.SignalR.Client;
-using ServicioRydentLocal.LogicaDelNegocio.Entidades;
+using Newtonsoft.Json;
+using ServicioRydentLocal.LogicaDelNegocio.Helpers;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
 using ServicioRydentLocal.LogicaDelNegocio.Services;
-using System.Collections.Generic;
+using ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis;
+using SixLabors.ImageSharp;
+using static System.Net.Mime.MediaTypeNames;
 
 public class Worker : BackgroundService
 {
@@ -49,19 +52,37 @@ public class Worker : BackgroundService
             await RecibirPinRydent(pin, clientId);
         });
 
-        _hubConnection.On<string, int>("ObtenerDoctor", async (clientId, idDoctor) =>
+        _hubConnection.On<string, string>("ObtenerDoctor", async (clientId, idDoctor) =>
         {
-            await ConsultarPorIdDoctor(idDoctor, clientId);
+            await ConsultarPorIdDoctor(clientId, Convert.ToInt32(idDoctor));
         });
 
-        _hubConnection.On<string, int, string>("BuscarPaciente", async (clientId, tipoBuqueda, valorDeBusqueda) =>
+        _hubConnection.On<string, string, string>("BuscarPaciente", async (clientId, tipoBuqueda, valorDeBusqueda) =>
         {
-            await BuscarPaciente(valorDeBusqueda, tipoBuqueda, clientId);
+            await BuscarPaciente(valorDeBusqueda, Convert.ToInt32(tipoBuqueda), clientId);
         });
 
-        _hubConnection.On<string, int>("BuscarDatosPersonalesCompletosPacientes", async (clientId, idAnanesis) =>
+        _hubConnection.On<string, string>("ObtenerDatosPersonalesCompletosPaciente", async (clientId, idAnanesis) =>
         {
-            await BuscarDatosPersonalesCompletosPacientes(clientId, idAnanesis);
+            await BuscarDatosPersonalesCompletosPacientes(clientId, Convert.ToInt32(idAnanesis));
+        });
+
+        _hubConnection.On<string, string>("ObtenerAntecedentesPaciente", async (clientId, idAnanesis) =>
+        {
+            await BuscarAntecedentesPacientes(clientId, Convert.ToInt32(idAnanesis));
+        });
+
+        _hubConnection.On<string, string>("ObtenerDatosEvolucion", async (clientId, idAnanesis) =>
+        {
+            await ObtenerDatosEvolucion(clientId, Convert.ToInt32(idAnanesis));
+        });
+
+        //clientId es el id de la conexion del cliente angular que pidio  ConsultarPorDiaYPorUnidad
+        //el punto On indica que se esta suscribiendo a un evento llamado ConsultarPorDiaYPorUnidad los parametros <string, int, DateTime>
+        //determinan los tipos de datos que se van a recibir en el evento y que vemos reflejados async (clientId, silla, fecha)
+        _hubConnection.On<string, string, DateTime>("ConsultarPorDiaYPorUnidad", async (clientId, silla, fecha) =>
+        {
+            await ConsultarPorDiaYPorUnidad(clientId, Convert.ToInt32(silla), fecha);
         });
         await _hubConnection.StartAsync();
         // aca estamos invocando una funcion que tenemos en el servidor signalR llamada RegistrarEquipo
@@ -90,6 +111,13 @@ public class Worker : BackgroundService
                     if (_hubConnection.State != HubConnectionState.Connected)
                     {
                         await ConnectToServer();
+                        // await BuscarDatosPersonalesCompletosPacientes(clientId: "1", idAnanesis: 1);
+                        await ObtenerDatosEvolucion(clientId: "1", idAnanesis: 25);
+                        var objFirma = new TFIRMAServicios();
+                        var archivosHelper = new ArchivosHelper();
+                        var resultadoFirma = await objFirma.ConsultarPorId(785);
+                        string firma = archivosHelper.obtenerBase64ConPrefijo(Convert.ToBase64String(resultadoFirma.FIRMA));
+                        var s = archivosHelper.obtenerDimensionFromBytes(resultadoFirma.FIRMA);
                     }
                     _logger.LogInformation("Consulta completada correctamente.");
                 }
@@ -103,6 +131,8 @@ public class Worker : BackgroundService
         }
        // await ConnectToServer();
     }
+
+
 
     public async Task RecibirPinRydent(string pinacceso, string clientId)
     {
@@ -124,19 +154,39 @@ public class Worker : BackgroundService
             //    respuestaPin.lstDoctores.Add(new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "")});
             //}
         }
-        await _hubConnection.InvokeAsync("RespuestaObtenerPin", clientId, respuestaPin);
+        try
+        {
+            await _hubConnection.InvokeAsync("RespuestaObtenerPin", clientId, JsonConvert.SerializeObject(respuestaPin));
+        }
+        catch (Exception ex)
+        {
+
+            throw;
+        }
+        
     }
 
-    public async Task ConsultarPorIdDoctor(int idDoctor, string clientId)
+    public async Task ConsultarPorIdDoctor(string clientId, int idDoctor)
     {
         var objDOCTORES = new TDATOSDOCTORESServicios();
         var objAname = new TANAMNESISServicios();
         var respuestaObtenerDoctor = new RespuestaObtenerDoctorModel();
         respuestaObtenerDoctor.doctor = await objDOCTORES.ConsultarPorId(idDoctor);
         respuestaObtenerDoctor.totalPacientes = await objAname.ConsultarTotalPacientesPorDoctor(idDoctor);
-        await _hubConnection.InvokeAsync("RespuestaObtenerDoctor", clientId, respuestaObtenerDoctor);
+        await _hubConnection.InvokeAsync("RespuestaObtenerDoctor", clientId, JsonConvert.SerializeObject(respuestaObtenerDoctor));
     }
-
+    
+    
+    public async Task ConsultarPorDiaYPorUnidad(string clientId, int silla, DateTime fecha)
+    {
+        var objDetalleCitasServicios= new TDETALLECITASServicios();
+        var objCitasServicios = new TCITASServicios();
+        var objRespuestaConsultarPorDiaYPorUnidad = new RespuestaConsultarPorDiaYPorUnidadModel();
+        objRespuestaConsultarPorDiaYPorUnidad.lstDetallaCitas = await objDetalleCitasServicios.ConsultarPorFechaySilla(fecha, silla);
+        objRespuestaConsultarPorDiaYPorUnidad.cita = await objCitasServicios.ConsultarPorId(silla, fecha);
+        // Las invocaciones siempre llaman a una funcion que estan en el Hub en el servidor de SR
+        await _hubConnection.InvokeAsync("RespuestaConsultarPorDiaYPorUnidad", clientId, objRespuestaConsultarPorDiaYPorUnidad);
+    }
     public async Task BuscarPaciente(string valorDeBusqueda, int tipoBusqueda,  string clientId)
     {
         var objAname = new TANAMNESISServicios();
@@ -153,39 +203,96 @@ public class Worker : BackgroundService
            NUMAFILIACION=item.NUMAFILIACION,
            TELEFONO=item.TELEFONO
         });
-        await _hubConnection.InvokeAsync("RespuestaBuscarPaciente", clientId, respuestaBuscarPaciente);
+        await _hubConnection.InvokeAsync("RespuestaBuscarPaciente", clientId, JsonConvert.SerializeObject(respuestaBuscarPaciente));
     }
-
+    
     public async Task BuscarDatosPersonalesCompletosPacientes(string clientId, int idAnanesis)
     {
-        var objAname = new TANAMNESISServicios();
-        var anamnesis = await objAname.ConsultarPorId(idAnanesis);
-        var respuestaBuscarDatosPersonalesCompletosPacientes = anamnesis;
-        await _hubConnection.InvokeAsync("RespuestaObtenerDatosCompletosPaciente", clientId, respuestaBuscarDatosPersonalesCompletosPacientes);
+        var objDatosPersonales = new DatosPersonalesServicios();
+        var datosPersonales = await objDatosPersonales.ConsultarPorId(idAnanesis);
+        var respuestaBuscarDatosPersonalesCompletosPacientes = datosPersonales;
+        await _hubConnection.InvokeAsync("RespuestaObtenerDatosPersonalesCompletosPaciente", clientId, JsonConvert.SerializeObject(respuestaBuscarDatosPersonalesCompletosPacientes));
     }
 
-    public async Task BuscarEvolucion (string clientId, int idAnanesis)
+    public async Task BuscarAntecedentesPacientes(string clientId, int idAnanesis)
+    {
+        var objAntecedentes = new AntecedentesServicios();
+        var antecedentes = await objAntecedentes.ConsultarPorId(idAnanesis);
+        var respuestaBuscarAntecedentesPacientes = antecedentes;
+        await _hubConnection.InvokeAsync("RespuestaObtenerAntecedentesPaciente", clientId, JsonConvert.SerializeObject(respuestaBuscarAntecedentesPacientes));
+    }
+
+    public async Task ObtenerDatosEvolucion(string clientId, int idAnanesis)
     {
         var objEvolucion = new TEVOLUCIONServicios();
         var listEvolucion = await objEvolucion.ConsultarPorAnamnesis(idAnanesis);
         var respuestaBuscarEvolucion = new List<RespuestaEvolucionPacienteModel>();
+        var archivosHelper = new ArchivosHelper();
         foreach (var item in listEvolucion)
         {
-            respuestaBuscarEvolucion.Add(new RespuestaEvolucionPacienteModel()
+            var objEvolucion1 = new RespuestaEvolucionPacienteModel();
+            objEvolucion1.evolucion = item;
+            objEvolucion1.imgFirmaPaciente = "";
+            objEvolucion1.imgFirmaDoctor = "";
+            if (item.FIRMA != null)
             {
-                evolucion = item,
-                //---item es un registro de la tabla TEVOLUCION en item.FIRMA esta almacenado el id de la firma que debemos buscar en la tabla T_FIRMAS------//
-                imgFirma = item.FIRMA == null ? "" :(item.FIRMA <= 0 ? "":await RetornarFotoEnBase64(item.FIRMA ?? -1))
-            }) ;
+                if (item.FIRMA > 0)
+                {
+                    try
+                    {
+                        objEvolucion1.imgFirmaPaciente = item.FIRMA == null ? "" : (item.FIRMA <= 0 ? "" : await RetornarFotoEnBase64ConPrefijo(item.FIRMA ?? -1, 1));
+                        objEvolucion1.imgFirmaDoctor = item.FIRMA == null ? "" : (item.FIRMA <= 0 ? "" : await RetornarFotoEnBase64ConPrefijo(item.FIRMA ?? -1, 2));
+                    }
+                    catch (Exception e)
+                    {
+
+                        objEvolucion1.imgFirmaPaciente = "";
+                        objEvolucion1.imgFirmaDoctor = "";
+                    }
+                   
+                }
+            }   
+           
+            respuestaBuscarEvolucion.Add(objEvolucion1);
+            //respuestaBuscarEvolucion.Add(new RespuestaEvolucionPacienteModel()
+            //{
+            //    evolucion = item,
+            //    //---item es un registro de la tabla TEVOLUCION en item.FIRMA esta almacenado el id de la firma que debemos buscar en la tabla T_FIRMAS------//
+            //    imgFirmaPaciente = item.FIRMA == null ? "" :(item.FIRMA <= 0 ? "":await RetornarFotoEnBase64ConPrefijo(item.FIRMA ?? -1,1)),
+            //    imgFirmaDoctor = item.FIRMA == null ? "" : (item.FIRMA <= 0 ? "" : await RetornarFotoEnBase64ConPrefijo(item.FIRMA ?? -1, 2))
+            //}) ;
         }
-        await _hubConnection.InvokeAsync("RespuestaBuscarEvolucion", clientId, respuestaBuscarEvolucion);
+        var objRespuestaObtenerDatosEvolucion = JsonConvert.SerializeObject(respuestaBuscarEvolucion);
+        try
+        {
+            await _hubConnection.InvokeAsync("RespuestaObtenerDatosEvolucion", clientId, objRespuestaObtenerDatosEvolucion);
+        }
+        catch (Exception e)
+        {
+
+            throw;
+        }
+        
     }
-    private async Task<string> RetornarFotoEnBase64(int idFirma)
+    private async Task<string> RetornarFotoEnBase64ConPrefijo(int idFirma, int tipo)
     {
+        var archivosHelper = new ArchivosHelper();
         var objFirma = new TFIRMAServicios();
         var resultadoFirma = await objFirma.ConsultarPorId(idFirma);
-        return Convert.ToBase64String(resultadoFirma.FIRMA);
+        if (tipo == 1)
+        {
+            var recorteFirmaPaciente = archivosHelper.recortarImganFromBytes(resultadoFirma.FIRMA, new Rectangle(0, 0, 1364, 225));
+            return archivosHelper.obtenerBase64ConPrefijo(recorteFirmaPaciente);
+        }
+        else
+        {
+            var recorteFirmaDoctor = archivosHelper.recortarImganFromBytes(resultadoFirma.FIRMA, new Rectangle(0, (482 - 215), 1364, 215));
+            return archivosHelper.obtenerBase64ConPrefijo(recorteFirmaDoctor);
+        }   
+       
     }
+
+
     private void AutenticarPinDeRydent(string pin)
     {
         //var resultadoAnamenseis = await objAname.ConsultarPorId(8703);

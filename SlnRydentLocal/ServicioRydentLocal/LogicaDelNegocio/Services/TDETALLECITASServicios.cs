@@ -39,12 +39,21 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        public async Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA)
+        public async Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA == FECHA && x.SILLA == SILLA);
+                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA == FECHA && x.SILLA == SILLA && x.HORA == HORA);
                 return obj == null ? new TDETALLECITAS() : obj;
+            }
+        }
+
+        public async Task<List<TDETALLECITAS>> ConsultarPorFechaySilla(DateTime FECHA, int SILLA)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA == FECHA && x.SILLA == SILLA).ToListAsync();
+                return obj == null ? new List<TDETALLECITAS>() : obj;
             }
         }
 
@@ -74,7 +83,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
     {
         Task<TDETALLECITAS> Agregar(TDETALLECITAS tdetallecitas);
         Task<bool> Editar(DateTime FECHA, int SILLA, TDETALLECITAS tdetallecitas);
-        Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA);
+        Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA);
+        Task<List<TDETALLECITAS>> ConsultarPorFechaySilla(DateTime FECHA, int SILLA);
         Task Borrar(DateTime FECHA, int SILLA);
     }
 }
