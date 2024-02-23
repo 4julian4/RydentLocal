@@ -13,11 +13,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
     {
         [Key]
         public int ID { set; get; }
-        public byte[] FIRMA { set; get; }
+        public byte[]? FIRMA { set; get; }
         public string FECHA { set; get; }
         public string HORA { set; get; }
         public string OBSERVACIONES { set; get; }
-        public byte[] HUELLA { set; get; }
+        public byte[]? HUELLA { set; get; }
 
     }
 }
