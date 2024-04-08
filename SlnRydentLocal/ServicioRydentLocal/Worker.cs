@@ -442,7 +442,9 @@ public class Worker : BackgroundService
             var fecha = objAgenda.lstDetallaCitas[0].FECHA;
             var nombre = objAgenda.lstDetallaCitas[0].NOMBRE;
             var historia = objAgenda.lstDetallaCitas[0].ID;
-            //var nuevoDetalleCita = await objDetallesCitasServicios.ConsultarPorFechaySilla(fecha.Value, objAgenda.lstDetallaCitas[0].SILLA??0);
+            //var editarCita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(fecha.Value, objAgenda.lstDetallaCitas[0].SILLA ?? 0, objAgenda.lstDetallaCitas[0].HORA);
+            
+            
             if (objAgenda.lstConfirmacionesPedidas != null && objAgenda.lstConfirmacionesPedidas.Count() > 0)
             {
                 var lstConfirmacionesPedidas = objAgenda.lstConfirmacionesPedidas;
@@ -605,21 +607,18 @@ public class Worker : BackgroundService
         {
             try
             {
-                var obj1 = await _dbcontext.P_AGENDA1(IN_SILLA, IN_FECHA.Date, "1", HORAINI, HORAFIN, INTERVALO, "", "");
-                //return obj == null || !obj.Any();
-                //var obj1 = await _dbcontext.Set<P_AGENDA1>()
-                //.FromSqlRaw("SELECT * FROM P_AGENDA1(:Silla, :fecha, :tipo, :horaini, :horafin, :intervalo, :paradaini, :paradafin) WHERE OUT_HORA BETWEEN :h1 AND :h2 AND OUT_NOMBRE <> '' AND OUT_NOMBRE IS NOT NULL",
-                //new FbParameter("Silla", IN_SILLA),
-                //new FbParameter("fecha", IN_FECHA),
-                //new FbParameter("tipo", IN_TIPO),
-                //new FbParameter("horaini", HORAINI),
-                //new FbParameter("horafin", HORAFIN),
-                //new FbParameter("intervalo", INTERVALO),
-                //new FbParameter("paradaini", PARARINI), 
-                //new FbParameter("paradafin", PARARFIN))
-                //.ToListAsync();
-                var obj2 = obj1.Where(x => x.OUT_HORA >= TimeSpan.Parse(h1) && x.OUT_HORA <= TimeSpan.Parse(h2).Subtract(TimeSpan.FromMinutes(1)) && !string.IsNullOrEmpty(x.OUT_NOMBRE));
-                return obj2.Count() == 0;
+                var lstAgendaDelDiaPorFecha = await _dbcontext.P_AGENDA1(IN_SILLA, IN_FECHA.Date, "1", HORAINI, HORAFIN, INTERVALO, "", "");
+                var lstAgendaDelDiaPorFechaFiltrado = lstAgendaDelDiaPorFecha.Where(x => x.OUT_HORA >= TimeSpan.Parse(h1) && x.OUT_HORA <= TimeSpan.Parse(h2).Subtract(TimeSpan.FromMinutes(1)) && !string.IsNullOrEmpty(x.OUT_NOMBRE));
+                //if (editar)
+                //{
+                //    var lstAgendaDelDiaPorFechaFiltradoMenosElQueSeEdita = lstAgendaDelDiaPorFechaFiltrado.Where(x => x.OUT_HORA_CITA != HORACITAEDITAR && x.OUT_NOMBRE != NOMBREAEDITAR);
+                //    return lstAgendaDelDiaPorFechaFiltradoMenosElQueSeEdita.Count() == 0;
+                //}
+                //else
+                {
+                    return lstAgendaDelDiaPorFechaFiltrado.Count() == 0;
+                }
+                
             }
             catch (Exception e)
             {
