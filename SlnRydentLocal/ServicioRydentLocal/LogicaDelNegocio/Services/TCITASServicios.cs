@@ -43,7 +43,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TCITAS.FirstOrDefaultAsync(x => x.SILLA == SILLA && x.FECHA == FECHA);
+                var obj = await _dbcontext.TCITAS.FirstOrDefaultAsync(x => x.SILLA == SILLA && x.FECHA == FECHA.Date);
                 return obj == null ? new TCITAS() : obj;
             }
         }

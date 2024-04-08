@@ -38,13 +38,56 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 }
             }
         }
+        public async Task<TDETALLECITAS>ConsultarPorIdDetalleCitas(string ID)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.ID == ID);
+                return obj == null ? new TDETALLECITAS() : obj;
+            }
+        }
 
+        
         public async Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA)
         {
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA == FECHA && x.SILLA == SILLA && x.HORA == HORA);
                 return obj == null ? new TDETALLECITAS() : obj;
+            }
+        }
+
+
+        public async Task<TDETALLECITAS> ConsultarPacienteConCitaRepetida(string NOMBRE, DateTime FECHA, string historia)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA >= FECHA.Date && x.NOMBRE == NOMBRE && x.ID == historia);
+                return obj == null ? new TDETALLECITAS() : obj;
+            }
+        }
+       
+
+        public async Task<bool> ConsultarDoctoresConCitaOtraUnidad(string DOCTOR,DateTime FECHA, TimeSpan H1, TimeSpan H2)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA==FECHA.Date && x.DOCTOR==DOCTOR).ToListAsync();
+                if (obj.Any())
+                {
+                    var obj1 = obj.Where(x =>
+                        (
+                            H1 >= x.HORA && H1 <= (x.HORA?.Add(TimeSpan.FromMinutes(60 * Convert.ToInt32(x.DURACION ?? "1")))) ||
+                            H2 >= x.HORA?.Add(TimeSpan.FromMinutes(1)) && H1 <= (x.HORA?.Add(TimeSpan.FromMinutes(60 * Convert.ToInt32(x.DURACION ?? "1") -1))) ||
+                            x.HORA >= H1 && x.HORA <= H2.Subtract(TimeSpan.FromMinutes(1))
+                        )
+                    ).ToList();
+                    return obj1.Any();
+                }
+                else
+                {
+                    return false;
+                }
             }
         }
 
@@ -57,14 +100,23 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-
-
-
-        public async Task<bool> Editar(DateTime FECHA, int SILLA, TDETALLECITAS tdetallecitas)
+        public async Task<List<TDETALLECITAS>> ConsultarPorFechaSillaHora(DateTime FECHA, int SILLA, TimeSpan HORA)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA == FECHA && x.SILLA == SILLA);
+                var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA == FECHA && x.SILLA == SILLA && x.HORA == HORA).ToListAsync();
+                return obj == null ? new List<TDETALLECITAS>() : obj;
+            }
+        }
+
+
+
+
+        public async Task<bool> Editar(String ID, TDETALLECITAS tdetallecitas)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.ID == ID);
                 if (obj == null)
                 {
                     return false;
@@ -82,9 +134,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
     public interface ITDETALLECITASServicios
     {
         Task<TDETALLECITAS> Agregar(TDETALLECITAS tdetallecitas);
-        Task<bool> Editar(DateTime FECHA, int SILLA, TDETALLECITAS tdetallecitas);
+        Task<bool> Editar(String ID, TDETALLECITAS tdetallecitas);
         Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA);
+        Task<TDETALLECITAS> ConsultarPorIdDetalleCitas(string ID);
         Task<List<TDETALLECITAS>> ConsultarPorFechaySilla(DateTime FECHA, int SILLA);
+        Task<List<TDETALLECITAS>> ConsultarPorFechaSillaHora(DateTime FECHA, int SILLA, TimeSpan HORA);
         Task Borrar(DateTime FECHA, int SILLA);
     }
 }

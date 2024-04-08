@@ -6,6 +6,7 @@ using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos;
 
 public class AppDbContext : DbContext
 {
@@ -40,11 +41,18 @@ public class AppDbContext : DbContext
     public DbSet<TCLAVE> TCLAVE { get; set; }
     public DbSet<TDATOSCLIENTES> TDATOSCLIENTES { get; set; }
     public DbSet<TFIRMA> TFIRMA { get; set; }
+    public DbSet<TCODIGOS_EPS> TCODIGOS_EPS { get; set; }
+    public DbSet<TFESTIVOS> TFESTIVOS { get; set; }
+    public DbSet<TCODIGOS_DEPARTAMENTO> TCODIGOS_DEPARTAMENTO { get; set; }
+    public DbSet<TCODIGOS_CIUDAD> TCODIGOS_CIUDAD { get; set; } 
+    public DbSet<TFOTOSFRONTALES> TFOTOSFRONTALES { get; set; }
+    public DbSet<T_FRASE_XEVOLUCION> T_FRASE_XEVOLUCION { get; set; }
     //public DbSet<Antecedentes> Antecedentes { get; set; }
     //public DbSet<DatosPersonales> DatosPersonales { get; set; }
 
     //[Keyless]
     DbSet<P_BUSCARPACIENTE> P_BUSCARPACIENTE_Result { get; set; }
+    DbSet<P_AGENDA1> P_AGENDA1_Result { get; set; }
     public async Task<List<P_BUSCARPACIENTE>> P_BUSCARPACIENTE(int TIPO, string P_VALOR)
     {
         var TIPOParameter = new FbParameter("TIPO", TIPO);
@@ -53,7 +61,37 @@ public class AppDbContext : DbContext
         return s;
     }
 
+   
+    public async Task<List<P_AGENDA1>> P_AGENDA1(string IN_SILLA, DateTime IN_FECHA, string IN_TIPO, string HORAINI, string HORAFIN, int INTERVALO, string PARARINI, string PARARFIN)
+    {
+        var IN_SILLAParameter = new FbParameter("IN_SILLA", IN_SILLA);
+        var IN_FECHAParameter = new FbParameter("IN_FECHA", IN_FECHA);
+        var IN_TIPOParameter = new FbParameter("IN_TIPO", IN_TIPO);
+        var HORAINIParameter = new FbParameter("HORAINI", HORAINI);
+        var HORAFINParameter = new FbParameter("HORAFIN", HORAFIN);
+        var INTERVALOParameter = new FbParameter("INTERVALO", INTERVALO);
+        var PARARINIParameter = new FbParameter("PARARINI", PARARINI);
+        var PARARFINParameter = new FbParameter("PARARFIN", PARARFIN);
+        if (PARARINI == "")
+        {
+            PARARINIParameter.Value = null;
+        }
+        if (PARARFIN == "")
+        {
+            PARARFINParameter.Value = null;
+        }
+        try
+        {
+            var s = await this.P_AGENDA1_Result.FromSqlRaw("select * from P_AGENDA1(@IN_SILLA, @IN_FECHA, @IN_TIPO, @HORAINI, @HORAFIN, @INTERVALO, @PARARINI, @PARARFIN)", IN_SILLAParameter, IN_FECHAParameter, IN_TIPOParameter, HORAINIParameter, HORAFINParameter, INTERVALOParameter, PARARINIParameter, PARARFINParameter).ToListAsync();
+            return s;
+        }
+        catch (Exception e)
+        {
 
+            throw;
+        }
+        
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -62,11 +100,17 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TCITAS>()
             .HasKey(c => new { c.SILLA, c.FECHA });
         modelBuilder.Entity<TDETALLECITAS>()
-            .HasKey(c => new { c.SILLA, c.FECHA});
+            .HasKey(c => new { c.SILLA, c.FECHA, c.HORA });
         modelBuilder.Entity<TCITASBORRADAS>()
             .HasKey(c => new { c.SILLA, c.FECHA, c.HORA });
         modelBuilder.Entity<TTRATAMIENTO>()
            .HasKey(c => new { c.IDTRATAMIENTO, c.FECHA });
+        modelBuilder.Entity<TCODIGOS_EPS>()
+            .HasKey(c => new { c.CODIGO });
+        modelBuilder.Entity<TFESTIVOS>()
+            .HasKey(c => new { c.FECHA });
+        modelBuilder.Entity<TCODIGOS_CIUDAD>()
+            .HasKey(c => new { c.CODIGO_CIUDAD });
         //modelBuilder.Entity<TANAMNESIS>()
         //   .HasOne(t => t.DatosPersonales)
         //   .WithOne()
