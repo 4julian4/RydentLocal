@@ -45,6 +45,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<List<THORARIOSAGENDA>> ConsultarTodos()
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.THORARIOSAGENDA.ToListAsync();
+                return obj == null ? new List<THORARIOSAGENDA>() : obj;
+            }
+        }
+
 
 
 
@@ -72,6 +81,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<int> Agregar(THORARIOSAGENDA thorariosagenda);
         Task<bool> Editar(int SILLA, THORARIOSAGENDA thorariosagenda);
         Task<THORARIOSAGENDA> ConsultarPorId(int SILLA);
+        Task<List<THORARIOSAGENDA>> ConsultarTodos();
         Task Borrar(int SILLA);
     }
 }

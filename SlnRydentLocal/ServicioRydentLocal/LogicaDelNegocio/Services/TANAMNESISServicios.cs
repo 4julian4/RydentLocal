@@ -46,6 +46,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<TANAMNESIS> ConsultarPorIdTexto(string IDANAMNESIS_TEXTO)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS_TEXTO == IDANAMNESIS_TEXTO);
+                return obj == null ? new TANAMNESIS() : obj;
+            }
+        }
+
         public async Task<int> ConsultarTotalPacientesPorDoctor(int IDDOCTOR)
         {
             using (var _dbcontext = new AppDbContext())

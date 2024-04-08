@@ -19,10 +19,33 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
+                
+                try
+                {
+                    int id = 0;
+                    using (var command = _dbcontext.Database.GetDbConnection().CreateCommand())
+                    {
+                        command.CommandText = "SELECT GEN_ID(TEVOLUCION_GEN, 1) FROM RDB$DATABASE";
+                        _dbcontext.Database.OpenConnection();
+                        var result = await command.ExecuteScalarAsync();
+                        id = Convert.ToInt32((long)result);
+                        _dbcontext.Database.CloseConnection();
+                    }
+                    tevolucion.IDEVOLUCION = id;
+                    //var id = await _dbcontext.Database.ExecuteSqlRawAsync("SELECT GEN_ID(TEVOLUCION_GEN, 1) FROM RDB$DATABASE");
+                    _dbcontext.TEVOLUCION.Add(tevolucion);
+                    await _dbcontext.SaveChangesAsync();
+                    await _dbcontext.Entry(tevolucion).ReloadAsync();
+                    return tevolucion.IDEVOLUCION ?? 0;
+                }
+                catch (Exception ex)
+                {
+                    // Manejar la excepción aquí
+                    Console.WriteLine(ex.Message);
+                    return 0;
+                }
 
-                _dbcontext.TEVOLUCION.Add(tevolucion);
-                await _dbcontext.SaveChangesAsync();
-                return tevolucion.IDEVOLUCION ?? 0;
+               
             }
         }
 
@@ -41,6 +64,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TEVOLUCION.FirstOrDefaultAsync(x => x.IDEVOLUCION == IDEVOLUCION);
+                return obj == null ? new TEVOLUCION() : obj;
+            }
+        }
+
+        public async Task<TEVOLUCION> ConsultarUltimaEvolucion(int IDEVOLUSECUND)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TEVOLUCION.Where(x => x.IDEVOLUSECUND == IDEVOLUSECUND).OrderByDescending(x=>x.FECHA).ThenByDescending(x=>x.HORA).FirstOrDefaultAsync();
                 return obj == null ? new TEVOLUCION() : obj;
             }
         }
