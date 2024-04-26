@@ -42,11 +42,19 @@ public class AppDbContext : DbContext
     public DbSet<TDATOSCLIENTES> TDATOSCLIENTES { get; set; }
     public DbSet<TFIRMA> TFIRMA { get; set; }
     public DbSet<TCODIGOS_EPS> TCODIGOS_EPS { get; set; }
+    public DbSet<TCODIGOS_PROCEDIMIENTOS> TCODIGOS_PROCEDIMIENTOS { get; set; }
+    public DbSet<TCODIGOS_CONSLUTAS> TCODIGOS_CONSLUTAS { get; set; }
     public DbSet<TFESTIVOS> TFESTIVOS { get; set; }
     public DbSet<TCODIGOS_DEPARTAMENTO> TCODIGOS_DEPARTAMENTO { get; set; }
     public DbSet<TCODIGOS_CIUDAD> TCODIGOS_CIUDAD { get; set; } 
     public DbSet<TFOTOSFRONTALES> TFOTOSFRONTALES { get; set; }
     public DbSet<T_FRASE_XEVOLUCION> T_FRASE_XEVOLUCION { get; set; }
+    public DbSet<THISTORIAL> THISTORIAL { get; set; }
+    public DbSet<TCITASCANCELADAS> TCITASCANCELADAS { get; set; }
+    public DbSet<T_RIPS_DX> T_RIPS_DX { get; set; }
+    public DbSet<T_RIPS_PROCEDIMIENTOS> T_RIPS_PROCEDIMIENTOS { get; set; }
+
+    
     //public DbSet<Antecedentes> Antecedentes { get; set; }
     //public DbSet<DatosPersonales> DatosPersonales { get; set; }
 
@@ -95,6 +103,10 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<THISTORIAL>()
+            .HasKey(c => new { c.FECHA, c.HORA });
+        modelBuilder.Entity<TCITASCANCELADAS>()
+            .HasKey(c => new { c.SILLA, c.FECHA, c.HORA });
         modelBuilder.Entity<T_ADICIONALES_ABONOS>()
             .HasKey(c => new { c.ID, c.IDENTIFICADOR, c.IDDOCTOR, c.FASE });    
         modelBuilder.Entity<TCITAS>()
@@ -106,6 +118,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TTRATAMIENTO>()
            .HasKey(c => new { c.IDTRATAMIENTO, c.FECHA });
         modelBuilder.Entity<TCODIGOS_EPS>()
+            .HasKey(c => new { c.CODIGO });
+        modelBuilder.Entity<TCODIGOS_PROCEDIMIENTOS>()
+            .HasKey(c => new { c.CODIGO });
+        modelBuilder.Entity<TCODIGOS_CONSLUTAS>()
             .HasKey(c => new { c.CODIGO });
         modelBuilder.Entity<TFESTIVOS>()
             .HasKey(c => new { c.FECHA });

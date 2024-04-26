@@ -64,6 +64,37 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda()
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                try
+                {
+                    var obj = await _dbcontext.TANAMNESIS.ToListAsync();
+                    return obj.Select(a => new TANAMNESIS //aca se pone el modelo nuevo con los campos
+                    {
+                        IDANAMNESIS = a.IDANAMNESIS,
+                        NOMBRE_PACIENTE = a.NOMBRE_PACIENTE,
+                        DOCTOR = a.DOCTOR != "No" ? a.DOCTOR : null,
+                        TELF_P = a.TELF_P != "No" ? a.TELF_P : null,
+                        TELF_P_OTRO = a.TELF_P_OTRO != "No" ? a.TELF_P_OTRO : null,
+                        CELULAR_P = a.CELULAR_P != "No" ? a.CELULAR_P : null,
+                        CEDULA_NUMERO = a.CEDULA_NUMERO != "No" ? a.CEDULA_NUMERO : null,
+                        NRO_AFILIACION = a.NRO_AFILIACION != "No" ? a.NRO_AFILIACION : null,
+                        IDANAMNESIS_TEXTO = a.IDANAMNESIS_TEXTO
+                    }).ToList();
+                }
+                catch (Exception e)
+                {
+
+                    throw;
+                }
+                
+            }
+        }
+
+
+
         public async Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR)
         {
             using (var _dbcontext = new AppDbContext())
@@ -98,6 +129,10 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<int> Agregar(TANAMNESIS tanamnesis);
         Task<bool> Editar(int IDANAMNESIS, TANAMNESIS tanamnesis);
         Task<TANAMNESIS> ConsultarPorId(int IDANAMNESIS);
+        Task<int> ConsultarTotalPacientesPorDoctor(int IDDOCTOR);
+        Task<TANAMNESIS> ConsultarPorIdTexto(string IDANAMNESIS_TEXTO);
+        Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda();
+
         Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR);
         Task Borrar(int IDANAMNESIS);
     }

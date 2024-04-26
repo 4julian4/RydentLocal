@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
@@ -45,7 +46,19 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-
+        public async Task<string> ConsultarCodigoPrestador(int IDDOCTOR)
+        {
+            int codDoctor = IDDOCTOR;
+            string query = "SELECT i.CODIGO_PRESTADOR FROM TINFORMACIONREPORTES i INNER JOIN TDATOSDOCTORES D ON d.IDREPORTE = i.ID WHERE D.id=@p0";
+            using (var _dbcontext = new AppDbContext())
+            {
+                var codigoPrestador = await _dbcontext.TINFORMACIONREPORTES
+                    .FromSqlRaw(query, codDoctor)
+                    .Select(i => i.CODIGO_PRESTADOR)
+                    .FirstOrDefaultAsync();
+                return codigoPrestador;
+            }
+        }
 
 
         public async Task<bool> Editar(int ID, TINFORMACIONREPORTES tinformacionreportes)
@@ -72,6 +85,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<int> Agregar(TINFORMACIONREPORTES tinformacionreportes);
         Task<bool> Editar(int ID, TINFORMACIONREPORTES tinformacionreportes);
         Task<TINFORMACIONREPORTES> ConsultarPorId(int ID);
+        Task<string> ConsultarCodigoPrestador(int IDDOCTOR);
         Task Borrar(int ID);
     }
 }

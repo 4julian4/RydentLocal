@@ -89,6 +89,17 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<TEVOLUCION> ConsultarPorAnamnesisFechaYHora(int IDEVOLUSECUND, DateTime FECHA, TimeSpan HORA)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TEVOLUCION
+                .FirstOrDefaultAsync(x => x.IDEVOLUSECUND == IDEVOLUSECUND && x.FECHA == FECHA && x.HORA == HORA);
+
+                return obj ?? new TEVOLUCION();
+            }
+        }
+
 
 
 

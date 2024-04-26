@@ -26,16 +26,21 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        public async Task Borrar(DateTime FECHA, int SILLA)
+        public async Task<bool> Borrar(DateTime FECHA, int SILLA, TimeSpan HORA)
         {
-            if (FECHA != null && SILLA != null)
+            if (FECHA != null && SILLA != null && HORA != null)
             {
                 using (var _dbcontext = new AppDbContext())
                 {
-                    var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA == FECHA && x.SILLA == SILLA);
+                    var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA == FECHA && x.SILLA == SILLA && x.HORA == HORA);
                     _dbcontext.TDETALLECITAS.Remove(obj);
-                    await _dbcontext.SaveChangesAsync();
+                    var affectedRows = await _dbcontext.SaveChangesAsync();
+                    return affectedRows > 0;
                 }
+            }
+            else
+            {
+                return false;
             }
         }
         public async Task<TDETALLECITAS>ConsultarPorIdDetalleCitas(string ID)
@@ -58,17 +63,19 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         }
 
 
-        public async Task<TDETALLECITAS> ConsultarPacienteConCitaRepetida(string NOMBRE, DateTime FECHA, string historia)
+        public async Task<List<TDETALLECITAS>> ConsultarPacienteConCitaRepetida(string NOMBRE, DateTime FECHA, string historia)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA >= FECHA.Date && x.NOMBRE == NOMBRE && x.ID == historia);
-                return obj == null ? new TDETALLECITAS() : obj;
+                var obj = await _dbcontext.TDETALLECITAS
+                    .Where(x => x.FECHA >= FECHA.Date && x.NOMBRE == NOMBRE && x.ID == historia)
+                    .ToListAsync();
+                return obj ?? new List<TDETALLECITAS>();
             }
         }
-       
 
-        public async Task<bool> ConsultarDoctoresConCitaOtraUnidad(string DOCTOR,DateTime FECHA, TimeSpan H1, TimeSpan H2)
+
+        public async Task<bool> ConsultarDoctoresConCitaOtraUnidad(string DOCTOR,DateTime FECHA, TimeSpan H1, TimeSpan H2, TDETALLECITAS? citaEditar = null)
         {
             using (var _dbcontext = new AppDbContext())
             {
@@ -77,11 +84,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 {
                     var obj1 = obj.Where(x =>
                         (
-                            H1 >= x.HORA && H1 <= (x.HORA?.Add(TimeSpan.FromMinutes(60 * Convert.ToInt32(x.DURACION ?? "1")))) ||
+                            H1 >= x.HORA && H1 <= (x.HORA?.Add(TimeSpan.FromMinutes(60 * Convert.ToInt32(x.DURACION ?? "1")+1))) ||
                             H2 >= x.HORA?.Add(TimeSpan.FromMinutes(1)) && H1 <= (x.HORA?.Add(TimeSpan.FromMinutes(60 * Convert.ToInt32(x.DURACION ?? "1") -1))) ||
                             x.HORA >= H1 && x.HORA <= H2.Subtract(TimeSpan.FromMinutes(1))
                         )
                     ).ToList();
+                    if (citaEditar != null && citaEditar.FECHA != null && citaEditar.SILLA != null && citaEditar.HORA != null)
+                    {
+                        obj1 = obj1.Where(x => !(x.FECHA == citaEditar.FECHA.Value.Date && x.SILLA == citaEditar.SILLA && x.HORA == citaEditar.HORA)).ToList();
+                    }
                     return obj1.Any();
                 }
                 else
@@ -112,20 +123,33 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
 
 
-        public async Task<bool> Editar(String ID, TDETALLECITAS tdetallecitas)
+        public async Task<bool> Editar(DateTime FECHA, int SILLA, TimeSpan HORA, TDETALLECITAS tdetallecitas)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.ID == ID);
+                var obj = await _dbcontext.TDETALLECITAS.FirstOrDefaultAsync(x => x.FECHA == FECHA.Date && x.HORA == HORA && x.SILLA == SILLA);
                 if (obj == null)
                 {
                     return false;
                 }
                 else
                 {
-                    _dbcontext.Entry(obj).CurrentValues.SetValues(tdetallecitas);
-                    await _dbcontext.SaveChangesAsync();
-                    return true;
+                    try
+                    {
+                        // Eliminamos la entidad existente
+                        _dbcontext.TDETALLECITAS.Remove(obj);
+                        await _dbcontext.SaveChangesAsync();
+
+                        // Creamos una nueva entidad con la nueva clave primaria
+                        _dbcontext.TDETALLECITAS.Add(tdetallecitas);
+                        await _dbcontext.SaveChangesAsync();
+
+                        return true;
+                    }
+                    catch (Exception e)
+                    {
+                        throw;
+                    }
                 }
             }
         }
@@ -134,11 +158,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
     public interface ITDETALLECITASServicios
     {
         Task<TDETALLECITAS> Agregar(TDETALLECITAS tdetallecitas);
-        Task<bool> Editar(String ID, TDETALLECITAS tdetallecitas);
+        Task<bool> Editar(DateTime FECHA, int SILLA, TimeSpan HORA, TDETALLECITAS tdetallecitas);
         Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA);
         Task<TDETALLECITAS> ConsultarPorIdDetalleCitas(string ID);
         Task<List<TDETALLECITAS>> ConsultarPorFechaySilla(DateTime FECHA, int SILLA);
         Task<List<TDETALLECITAS>> ConsultarPorFechaSillaHora(DateTime FECHA, int SILLA, TimeSpan HORA);
-        Task Borrar(DateTime FECHA, int SILLA);
+        Task<List<TDETALLECITAS>> ConsultarPacienteConCitaRepetida(string NOMBRE, DateTime FECHA, string historia);
+        Task<bool> Borrar(DateTime FECHA, int SILLA, TimeSpan HORA);
     }
 }
