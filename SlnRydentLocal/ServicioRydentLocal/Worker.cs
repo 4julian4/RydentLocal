@@ -75,6 +75,11 @@ public class Worker : BackgroundService
         {
             Console.WriteLine("***************************");
             await GuardarDatosEvolucion(clientId, datosEvolucion);
+        }); 
+
+        _hubConnection.On<string, string>("GuardarDatosRips", async (clientId, datosRips) =>
+        {
+            await GuardarDatosRips(clientId, datosRips);
         });
 
         _hubConnection.On<string>("ObtenerCodigosEps", async (clientId) =>
@@ -87,7 +92,10 @@ public class Worker : BackgroundService
             await ConsultarPorDiaYPorUnidad(clientId, Convert.ToInt32(silla), fecha);
         });
 
-
+        _hubConnection.On<string, string>("RealizarAccionesEnCitaAgendada", async (clientId, modeloRealizarAccionesCitaAgendada) =>
+        {
+            await RealizarAccionesEnCitaAgendada(clientId, modeloRealizarAccionesCitaAgendada);
+        });
 
         //clientId es el id de la conexion del cliente angular que pidio  ConsultarPorDiaYPorUnidad
         //el punto On indica que se esta suscribiendo a un evento llamado ConsultarPorDiaYPorUnidad los parametros <string, int, DateTime>
@@ -140,6 +148,7 @@ public class Worker : BackgroundService
                     if (_hubConnection.State != HubConnectionState.Connected)
                     {
                         await ConnectToServer(primerIntento);
+                        
                         primerIntento = false;
                         
                     }
@@ -165,12 +174,15 @@ public class Worker : BackgroundService
         var objPINACCESO = new TCLAVEServicios();
         var objDOCTORES = new TDATOSDOCTORESServicios();
         var objEPS = new TCODIGOS_EPSServicios();
+        var objPROCEDIMIENTOS = new TCODIGOS_PROCEDIMIENTOSServicios();
+        var objCONSULTAS = new TCODIGOS_CONSLUTASServicios();
         var objDepartamentos = new TCODIGOS_DEPARTAMENTOServicios();
         var objCiudades = new TCODIGOS_CIUDADServicios();
         var objFrasesXEvolucion = new T_FRASE_XEVOLUCIONServicios();
         var objHorariosAgenda = new THORARIOSAGENDAServicios();
         var objFestivos = new TFESTIVOSServicios();
         var objConfiguracionesRydent = new TCONFIGURACIONES_RYDENTServicios();
+        var objTAnamnesisParaAgendayBuscadores = new TANAMNESISServicios();
         respuestaPin.clave = await objPINACCESO.ConsultarPorId(pinacceso);
         if (respuestaPin.clave != null)
         {
@@ -178,15 +190,20 @@ public class Worker : BackgroundService
         }   
         var listDoctores =  await objDOCTORES.ConsultarTodos();
         var listEps = await objEPS.ConsultarTodos();
+        var listProcedimientos = await objPROCEDIMIENTOS.ConsultarTodos();
+        var listConsultas = await objCONSULTAS.ConsultarTodos();
         var listDepartamentos = await objDepartamentos.ConsultarTodos();
         var listCiudades = await objCiudades.ConsultarTodos();
         var lstFrasesXEvolucion = await objFrasesXEvolucion.ConsultarTodos();
         var listHorariosAgenda = await objHorariosAgenda.ConsultarTodos();
         var listFestivos = await objFestivos.ConsultarTodos();
         var listConfiguracionesRydent = await objConfiguracionesRydent.ConsultarTodos();
+        var listAnamnesisParaAgendayBuscadores = await objTAnamnesisParaAgendayBuscadores.ConsultarDatosPacientesParaCargarEnAgenda();
         if (listDoctores != null && listDoctores.Count() > 0) 
         {
             respuestaPin.lstEps = listEps;
+            respuestaPin.lstProcedimientos = listProcedimientos;
+            respuestaPin.lstConsultas = listConsultas; 
             respuestaPin.lstDepartamentos = listDepartamentos;
             respuestaPin.lstCiudades = listCiudades;
             respuestaPin.lstDoctores = listDoctores.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
@@ -194,6 +211,10 @@ public class Worker : BackgroundService
             respuestaPin.lstHorariosAgenda = listHorariosAgenda;
             respuestaPin.lstFestivos = listFestivos;
             respuestaPin.lstConfiguracionesRydent=listConfiguracionesRydent;
+            if (listAnamnesisParaAgendayBuscadores != null && listAnamnesisParaAgendayBuscadores.Count() > 0)
+            {
+                respuestaPin.lstAnamnesisParaAgendayBuscadores = listAnamnesisParaAgendayBuscadores;
+            }
         }
         try
         {
@@ -269,6 +290,9 @@ public class Worker : BackgroundService
         await _hubConnection.InvokeAsync("RespuestaObtenerCodigosEps", clientId, JsonConvert.SerializeObject(respuestaBuscarEps));
     }
 
+
+    
+
     public async Task ObtenerDatosEvolucion(string clientId, int idAnanesis)
     {
         var objEvolucion = new TEVOLUCIONServicios();
@@ -316,7 +340,86 @@ public class Worker : BackgroundService
         }
         
     }
+    public async Task GuardarDatosRips(string clientId, string datosRips)
+    {
+        var objRips = JsonConvert.DeserializeObject<DatosGuardarRips>(datosRips);
+        var objRipsDxServicios = new T_RIPS_DXServicios();
+        var objRipsProcedimientosServicios = new T_RIPS_PROCEDIMIENTOSServicios();
+        var datosGuardarRipsDx = new T_RIPS_DX();
+        var objTAnamnesisServicios = new TANAMNESISServicios();
+        var objTAnamnesis = new TANAMNESIS();
+        objTAnamnesis = await objTAnamnesisServicios.ConsultarPorId(objRips.IDANAMNESIS ?? 0);
+        
+        var codigoEntidad = objRips.CODIGOENTIDAD;
+        if (objRips.CODIGOENTIDAD == "")
+        {
+            codigoEntidad = "000000";
+        }
+        datosGuardarRipsDx.CODIGOENTIDAD = codigoEntidad;
+        datosGuardarRipsDx.IDANAMNESIS = objRips.IDANAMNESIS;
+        //ojo falta validar lo de la factura
+        datosGuardarRipsDx.FACTURA = objRips.FACTURA;
+        datosGuardarRipsDx.IDDOCTOR = objRips.IDDOCTOR;
 
+        var objTINFORMACIONREPORTESServicios = new TINFORMACIONREPORTESServicios();
+        var codigoPrestador = await objTINFORMACIONREPORTESServicios.ConsultarCodigoPrestador(objRips.IDDOCTOR ?? 0);
+        datosGuardarRipsDx.CODIGOPRESTADOR = codigoPrestador;
+        
+        datosGuardarRipsDx.TIPOIDENTIFICACION = objTAnamnesis.DOCUMENTO_IDENTIDAD;
+        datosGuardarRipsDx.IDENTIFICACION = objTAnamnesis.CEDULA_NUMERO;
+        datosGuardarRipsDx.FECHACONSULTA = objRips.FECHACONSULTA;
+        datosGuardarRipsDx.NUMEROAUTORIZACION = objRips.NUMEROAUTORIZACION;
+        datosGuardarRipsDx.CODIGOCONSULTA = objRips.CODIGOCONSULTA;
+        datosGuardarRipsDx.FINALIDADCONSULTA = objRips.FINALIDADCONSULTA;
+        datosGuardarRipsDx.CAUSAEXTERNA = objRips.CAUSAEXTERNA;
+        datosGuardarRipsDx.DX1 = objRips.CODIGODIAGNOSTICOPRINCIPAL;
+        datosGuardarRipsDx.TIPODIAGNOSTICO = objRips.TIPODIAGNOSTICO;
+        datosGuardarRipsDx.VALORCONSULTA = objRips.VALORCONSULTA;
+        datosGuardarRipsDx.VALORCUOTAMODERADORA = objRips.VALORCUOTAMODERADORA;
+        datosGuardarRipsDx.VALORNETO = objRips.VALORNETO;
+
+        var resultadoDx = await objRipsDxServicios.Agregar(datosGuardarRipsDx);
+        var resultado = resultadoDx;
+        if (resultadoDx)
+        {
+            var objHistorialServicios = new THISTORIALServicios();
+            var mensaje = "Se agrega dx RIPS CORTO al paciente " + objTAnamnesis.IDANAMNESIS_TEXTO + " - " + objTAnamnesis.NOMBRE_PACIENTE;
+            await objHistorialServicios.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = "",DESCRIPCION = mensaje });
+        }
+        if (objRips.CODIGOPROCEDIMIENTO != null)
+        {
+            var datosGuardarRipsProcedimientos = new T_RIPS_PROCEDIMIENTOS();
+            datosGuardarRipsProcedimientos.IDANAMNESIS = objRips.IDANAMNESIS;
+            datosGuardarRipsProcedimientos.FACTURA = objRips.FACTURA;
+            datosGuardarRipsProcedimientos.CODIGOENTIDAD = codigoEntidad;
+            datosGuardarRipsProcedimientos.IDDOCTOR = objRips.IDDOCTOR;
+            datosGuardarRipsProcedimientos.CODIGOPRESTADOR = codigoPrestador;
+            datosGuardarRipsProcedimientos.TIPOIDENTIFICACION = objTAnamnesis.DOCUMENTO_IDENTIDAD;
+            datosGuardarRipsProcedimientos.IDENTIFICACION = objTAnamnesis.CEDULA_NUMERO;
+            datosGuardarRipsProcedimientos.FECHAPROCEDIMIENTO = objRips.FECHACONSULTA;
+            datosGuardarRipsProcedimientos.NUMEROAUTORIZACION = objRips.NUMEROAUTORIZACION;
+            datosGuardarRipsProcedimientos.CODIGOPROCEDIMIENTO = objRips.CODIGOPROCEDIMIENTO;
+            datosGuardarRipsProcedimientos.FINALIDADPROCEDIMIENTI = objRips.FINALIDADPROCEDIMIENTI;
+            datosGuardarRipsProcedimientos.AMBITOREALIZACION = objRips.AMBITOREALIZACION;
+            datosGuardarRipsProcedimientos.PERSONALQUEATIENDE = objRips.PERSONALQUEATIENDE;
+            datosGuardarRipsProcedimientos.DXPRINCIPAL = objRips.DXPRINCIPAL;
+            datosGuardarRipsProcedimientos.DXRELACIONADO = objRips.DXRELACIONADO;
+            datosGuardarRipsProcedimientos.COMPLICACION = objRips.COMPLICACION;
+            datosGuardarRipsProcedimientos.FORMAREALIZACIONACTOQUIR = objRips.FORMAREALIZACIONACTOQUIR;
+            datosGuardarRipsProcedimientos.VALORPROCEDIMIENTO = objRips.VALORPROCEDIMIENTO;
+            datosGuardarRipsProcedimientos.EXTRANJERO = objRips.EXTRANJERO;
+            datosGuardarRipsProcedimientos.PAIS = objRips.PAIS;
+            var resultadoProcedimientos = await objRipsProcedimientosServicios.Agregar(datosGuardarRipsProcedimientos);
+            if (resultadoProcedimientos)
+            {
+                var objHistorialServicios = new THISTORIALServicios();
+                var mensaje = "Se agrega Procedimiento RIPS CORTO al paciente  " + objTAnamnesis.IDANAMNESIS_TEXTO + " - " + objTAnamnesis.NOMBRE_PACIENTE;
+                await objHistorialServicios.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = "", DESCRIPCION = mensaje });
+            }
+            resultado = resultadoProcedimientos;
+        }
+        await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, resultado);
+    }
     public async Task GuardarDatosEvolucion(string clientId, string datosEvolucion)
     {
         try
@@ -391,6 +494,7 @@ public class Worker : BackgroundService
         }
     }
 
+    
     private async Task<string> validacionesExclullentes(string clientId, string datosAgenda)
     {
         var mensaje = "ACA VA MENSAJE SI VALIDACION NO PASO";
@@ -426,6 +530,180 @@ public class Worker : BackgroundService
 
         return horaFinalString;
     }
+    public async Task RealizarAccionesEnCitaAgendada(string clientId, string datosRealizarAccionAgenda)
+    {
+        var objHistorial = new THISTORIALServicios();
+        var objDetallesCitasServicios = new TDETALLECITASServicios();
+        var respuesta = false;
+        var settings = new JsonSerializerSettings();
+        settings.Converters.Add(new TimeSpanConverter());
+        var objDatosRealizarAccionCitaAgendada = JsonConvert.DeserializeObject<List<RespuestaAccionesEnCitaAgendada>>(datosRealizarAccionAgenda, settings);
+        if (objDatosRealizarAccionCitaAgendada != null && objDatosRealizarAccionCitaAgendada.Count() > 0)
+        {
+            if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "BORRAR").Any())
+            {
+                var borrarCita = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "BORRAR").FirstOrDefault();
+                if (borrarCita.aceptado)
+                {
+                    var cita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(borrarCita.fecha.Date, borrarCita.silla, borrarCita.hora);
+                    if (cita != null && cita.Count() > 0)
+                    {
+                        respuesta = await objDetallesCitasServicios.Borrar(borrarCita.fecha.Date, borrarCita.silla, borrarCita.hora);
+                        if (respuesta)
+                        {
+                            var objCitasBorradas = new TCITASBORRADASServicios();
+                            await objCitasBorradas.Agregar(new TCITASBORRADAS() { FECHA = borrarCita.fecha.Date, SILLA = borrarCita.silla, HORA = borrarCita.hora, NOMBRE = cita[0].NOMBRE, USUARIO = borrarCita.quienLoHace, FECHASUCESO = DateTime.Now.Date });
+                            var mensaje = "Cita borrada de " + cita[0].NOMBRE + " el " + DateTime.Now.Date.ToString("dd/MM/yyyy") + " a las " + DateTime.Now.TimeOfDay.ToString() + "estaba programada para" + cita[0].FECHA + "a las" + cita[0].HORA + "en la silla" + cita[0].SILLA;
+                            await objHistorial.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = borrarCita.quienLoHace, IDANAMNESIS = int.Parse(cita[0].ID), DESCRIPCION = mensaje });
+                        }
+                    }
+                }
+            }
+            if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "CANCELARCITA").Any())
+            {
+                var cancelarCita = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "CANCELARCITA").FirstOrDefault();
+                if (cancelarCita.aceptado)
+                {
+                    var cita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(cancelarCita.fecha.Date, cancelarCita.silla, cancelarCita.hora);
+                    if (cita != null && cita.Count() > 0)
+                    {
+                        respuesta = await objDetallesCitasServicios.Borrar(cancelarCita.fecha.Date, cancelarCita.silla, cancelarCita.hora);
+                        if (respuesta)
+                        {
+                            var objCitasCanceladas = new TCITASCANCELADASServicios();
+                            var citaCancelada = new TCITASCANCELADAS() { FECHA = cancelarCita.fecha.Date, SILLA = cancelarCita.silla, HORA = cancelarCita.hora, NOMBRE = cita[0].NOMBRE, USUARIO = cancelarCita.quienLoHace };
+                            await objCitasCanceladas.Agregar(citaCancelada);
+                            var mensaje = "Cita cancelada de " + cita[0].NOMBRE + " el " + DateTime.Now.Date.ToString("dd/MM/yyyy") + " a las " + DateTime.Now.TimeOfDay.ToString() + "estaba programada para" + cita[0].FECHA + "a las" + cita[0].HORA + "en la silla" + cita[0].SILLA;
+                            await objHistorial.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = cancelarCita.quienLoHace, IDANAMNESIS = int.Parse(cita[0].ID), DESCRIPCION = mensaje });
+                        }
+                    }
+                }
+            }
+            else if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "CONFIRMAR").Any())
+            {
+                var confirmarCita = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "CONFIRMAR").FirstOrDefault();
+                if (confirmarCita.aceptado)
+                {
+                    var cita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(confirmarCita.fecha.Date, confirmarCita.silla, confirmarCita.hora);
+                    if (cita != null && cita.Count() > 0)
+                    {
+                        cita[0].CONFIRMAR = "SI";
+                        cita[0].OBSERVACIONES = confirmarCita.respuesta;
+                        if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "CONFIRMAR_ALARMA_AGENDA").Any())
+                        {
+                            var alarmarCita = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "CONFIRMAR_ALARMA_AGENDA").FirstOrDefault();
+                            if (alarmarCita.aceptado)
+                            {
+                                cita[0].ALARMAR = "SI";
+                            }
+                        }
+                        respuesta = await objDetallesCitasServicios.Editar(confirmarCita.fecha.Date, confirmarCita.silla, confirmarCita.hora, cita[0]);
+                        if (respuesta)
+                        {
+                            var mensaje = "Cita confirmada de " + cita[0].NOMBRE + " el " + DateTime.Now.Date.ToString("dd/MM/yyyy") + " a las " + DateTime.Now.TimeOfDay.ToString() + "estaba programada para" + cita[0].FECHA + "a las" + cita[0].HORA + "en la silla" + cita[0].SILLA;
+                            await objHistorial.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = confirmarCita.quienLoHace, IDANAMNESIS = int.Parse(cita[0].ID), DESCRIPCION = mensaje }); 
+                        }
+
+                    }
+                }
+            }
+            else if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "SINCONFIRMAR").Any())
+            {
+                var citaSinConfirmar = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "SINCONFIRMAR").FirstOrDefault();
+                if (citaSinConfirmar.aceptado)
+                {
+                    var cita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(citaSinConfirmar.fecha.Date, citaSinConfirmar.silla, citaSinConfirmar.hora);
+                    if (cita != null && cita.Count() > 0)
+                    {
+                        cita[0].CONFIRMAR = "NO";
+                        //cita[0].OBSERVACIONES = citaSinConfirmar.respuesta;
+                        respuesta = await objDetallesCitasServicios.Editar(citaSinConfirmar.fecha.Date, citaSinConfirmar.silla, citaSinConfirmar.hora, cita[0]);
+                    }
+                }
+            }
+            else if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "NOASISTIO").Any())
+            {
+                var noAsistio = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "NOASISTIO").FirstOrDefault();
+                if (noAsistio.aceptado)
+                {
+                    var cita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(noAsistio.fecha.Date, noAsistio.silla, noAsistio.hora);
+                    if (cita != null && cita.Count() > 0)
+                    {
+                        cita[0].ASISTENCIA = "NO";
+                        respuesta = await objDetallesCitasServicios.Editar(noAsistio.fecha.Date, noAsistio.silla, noAsistio.hora, cita[0]);
+                        if (respuesta)
+                        {
+                            var mensaje = "Cita no asistida de " + cita[0].NOMBRE + " el " + DateTime.Now.Date.ToString("dd/MM/yyyy") + " a las " + DateTime.Now.TimeOfDay.ToString() + "estaba programada para" + cita[0].FECHA + "a las" + cita[0].HORA + "en la silla" + cita[0].SILLA;
+                            await objHistorial.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = noAsistio.quienLoHace, IDANAMNESIS = int.Parse(cita[0].ID), DESCRIPCION = mensaje });
+                        }
+                        if (noAsistio.respuesta != null && noAsistio.respuesta!="" && cita[0].ID != null && cita[0].ID != "")
+                        {
+                            var objEvolucionPaciente = new TEVOLUCIONServicios();
+                            var objEvolucion = new TEVOLUCION();
+                            objEvolucion.IDEVOLUSECUND = int.Parse(cita[0].ID);
+                            objEvolucion.FECHA = noAsistio.fecha.Date;
+                            objEvolucion.HORA = noAsistio.hora;
+                            objEvolucion.EVOLUCION = noAsistio.respuesta;
+                            objEvolucion.DOCTOR = cita[0].DOCTOR;
+                            await objEvolucionPaciente.Agregar(objEvolucion);
+                            var mensaje ="se realiza evolucion desde agenda por inasistencia del Paciente " + cita[0].NOMBRE + "que estaba programada para el dia " + cita[0].FECHA.Value.Date + " a las " + cita[0].HORA + "esto se hizo el dia" + DateTime.Now.Date + "a las" + DateTime.Now.TimeOfDay + "y lo hizo" + noAsistio.quienLoHace;
+                        }
+                    }
+                }
+            }
+            else if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "ASISTIO").Any())
+            {
+                var asistio = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "ASISTIO").FirstOrDefault();
+                if (asistio.aceptado)
+                {
+                    var cita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(asistio.fecha.Date, asistio.silla, asistio.hora);
+                    if (cita != null && cita.Count() > 0)
+                    {
+                        cita[0].ASISTENCIA = "SI";
+                        respuesta = await objDetallesCitasServicios.Editar(asistio.fecha.Date, asistio.silla, asistio.hora, cita[0]);
+                        if (cita[0].ID != null && cita[0].ID != "")
+                        {
+                            var objEvolucionPaciente = new TEVOLUCIONServicios();
+                            var existeEvolucion = await objEvolucionPaciente.ConsultarPorAnamnesisFechaYHora(int.Parse(cita[0].ID), asistio.fecha.Date, asistio.hora);
+                            if (existeEvolucion != null)
+                            {
+                                if (existeEvolucion.IDEVOLUCION.HasValue)
+                                {
+                                    await objEvolucionPaciente.Borrar(existeEvolucion.IDEVOLUCION.Value);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else if (objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "QUITARASISTENCIA").Any())
+            {
+                var quitarAsistencia = objDatosRealizarAccionCitaAgendada.Where(x => x.tipoAccion == "QUITARASISTENCIA").FirstOrDefault();
+                if (quitarAsistencia.aceptado)
+                {
+                    var cita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(quitarAsistencia.fecha.Date, quitarAsistencia.silla, quitarAsistencia.hora);
+                    if (cita != null && cita.Count() > 0)
+                    {
+                        cita[0].ASISTENCIA = "";
+                        respuesta = await objDetallesCitasServicios.Editar(quitarAsistencia.fecha.Date, quitarAsistencia.silla, quitarAsistencia.hora, cita[0]);
+                        if (cita[0].ID != null && cita[0].ID != "")
+                        {
+                            var objEvolucionPaciente = new TEVOLUCIONServicios();
+                            var existeEvolucion = await objEvolucionPaciente.ConsultarPorAnamnesisFechaYHora(int.Parse(cita[0].ID), quitarAsistencia.fecha.Date, quitarAsistencia.hora);
+                            if (existeEvolucion != null)
+                            {
+                                if (existeEvolucion.IDEVOLUCION.HasValue)
+                                {
+                                    await objEvolucionPaciente.Borrar(existeEvolucion.IDEVOLUCION.Value);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        await _hubConnection.InvokeAsync("RespuestaRealizarAccionesEnCitaAgendada", clientId, JsonConvert.SerializeObject(respuesta));
+    }
 
     public async Task ObtenerValidacionesAgenda(string clientId, string datosAgenda)
     {
@@ -437,14 +715,13 @@ public class Worker : BackgroundService
             var settings = new JsonSerializerSettings();
             settings.Converters.Add(new TimeSpanConverter());
             var objAgenda = JsonConvert.DeserializeObject<RespuestaConsultarPorDiaYPorUnidadModel>(datosAgenda, settings);
-
-            //var objAgenda = JsonConvert.DeserializeObject<RespuestaConsultarPorDiaYPorUnidadModel>(datosAgenda);
+            var editar = objAgenda != null && objAgenda.detalleCitaEditar != null && objAgenda.detalleCitaEditar.FECHA != null && objAgenda.detalleCitaEditar.SILLA != null && objAgenda.detalleCitaEditar.HORA != null;
             var fecha = objAgenda.lstDetallaCitas[0].FECHA;
             var nombre = objAgenda.lstDetallaCitas[0].NOMBRE;
             var historia = objAgenda.lstDetallaCitas[0].ID;
-            //var editarCita = await objDetallesCitasServicios.ConsultarPorFechaSillaHora(fecha.Value, objAgenda.lstDetallaCitas[0].SILLA ?? 0, objAgenda.lstDetallaCitas[0].HORA);
+            var horaEditar = objAgenda.lstDetallaCitas[0].HORA;
             
-            
+
             if (objAgenda.lstConfirmacionesPedidas != null && objAgenda.lstConfirmacionesPedidas.Count() > 0)
             {
                 var lstConfirmacionesPedidas = objAgenda.lstConfirmacionesPedidas;
@@ -463,7 +740,7 @@ public class Worker : BackgroundService
                     //hacer consulta de hora incial de la agenda y hora final de la agenda
                     var objHorariosAgenda = new THORARIOSAGENDAServicios();
                     var objRespuestaConsultarHorariosSilla = await objHorariosAgenda.ConsultarPorId(objAgenda.lstDetallaCitas[0].SILLA??0);
-                    var hayEspacio = await BuscarEspacioAgenda(objAgenda.lstDetallaCitas[0].SILLA.ToString(), objAgenda.lstDetallaCitas[0].FECHA.Value, "1", objRespuestaConsultarHorariosSilla.HORAINICIAL.ToString(), objRespuestaConsultarHorariosSilla.HORAFINAL.ToString(), 15, "", "", objAgenda.lstDetallaCitas[0].HORA.ToString(), BuscarHoraFinal(objAgenda.lstDetallaCitas[0].HORA.ToString(), objAgenda.lstDetallaCitas[0].DURACION.ToString()));
+                    var hayEspacio = await BuscarEspacioAgenda(objAgenda.lstDetallaCitas[0].SILLA.ToString(), objAgenda.lstDetallaCitas[0].FECHA.Value, "1", objRespuestaConsultarHorariosSilla.HORAINICIAL.ToString(), objRespuestaConsultarHorariosSilla.HORAFINAL.ToString(), 15, "", "", objAgenda.lstDetallaCitas[0].HORA.ToString(), BuscarHoraFinal(objAgenda.lstDetallaCitas[0].HORA.ToString(), objAgenda.lstDetallaCitas[0].DURACION.ToString()), objAgenda.detalleCitaEditar);
                     if (!hayEspacio)
                     {
                         lstRespuestaConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel()
@@ -480,7 +757,7 @@ public class Worker : BackgroundService
                     //aca hacemos el query para ver si el doctor tiene cita en otra unidad
                     if (fecha.HasValue && horaCita.HasValue)
                     {
-                        estaRepetido = await objDetallesCitasServicios.ConsultarDoctoresConCitaOtraUnidad(doctor, fecha.Value, horaCita.Value, horaFinalTs);
+                        estaRepetido = await objDetallesCitasServicios.ConsultarDoctoresConCitaOtraUnidad(doctor, fecha.Value, horaCita.Value, horaFinalTs, objAgenda.detalleCitaEditar);
                     }
 
                     if (estaRepetido)
@@ -500,6 +777,14 @@ public class Worker : BackgroundService
                 {
                     bool estaRepetido = false;
                     var resultado = await objDetallesCitasServicios.ConsultarPacienteConCitaRepetida(nombre, fecha.Value, historia);
+                    if (editar)
+                    {
+                        //revisar porfavor
+                        if (resultado != null)
+                        {
+                            var resultadoEditar =  resultado?.Where(x =>x.FECHA != fecha && x.HORA != horaEditar);
+                        }
+                    }
                     if (resultado != null)
                     {
                         lstRespuestaConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel()
@@ -511,25 +796,28 @@ public class Worker : BackgroundService
                         });
                     }
                 }
-
-                if (lstConfirmacionesPedidas.Where(x => x.nombreConfirmacion == "PROXIMA_CITA_ASUNTO").Any())
+                if (!editar)
                 {
-                    var idHistoria = objAgenda.lstDetallaCitas[0].ID;
-                    if (idHistoria != null)
+                    if (lstConfirmacionesPedidas.Where(x => x.nombreConfirmacion == "PROXIMA_CITA_ASUNTO").Any())
                     {
-                        var objAnamnesis = new TANAMNESISServicios();
-                        var objAnamnesisModel = await objAnamnesis.ConsultarPorIdTexto(idHistoria);
-                        if (objAnamnesisModel != null && objAnamnesisModel.IDANAMNESIS > 0)
+                        var idHistoria = objAgenda.lstDetallaCitas[0].ID;
+                        if (idHistoria != null)
                         {
-                            var objEvolucion = new TEVOLUCIONServicios();
-                            var objEvolucionModel = await objEvolucion.ConsultarUltimaEvolucion(objAnamnesisModel.IDANAMNESIS);
-                            if (objEvolucionModel != null)
+                            var objAnamnesis = new TANAMNESISServicios();
+                            var objAnamnesisModel = await objAnamnesis.ConsultarPorIdTexto(idHistoria);
+                            if (objAnamnesisModel != null && objAnamnesisModel.IDANAMNESIS > 0)
                             {
-                                objAgenda.lstDetallaCitas[0].ASUNTO = objEvolucionModel.PROXIMA_CITAstr;
+                                var objEvolucion = new TEVOLUCIONServicios();
+                                var objEvolucionModel = await objEvolucion.ConsultarUltimaEvolucion(objAnamnesisModel.IDANAMNESIS);
+                                if (objEvolucionModel != null)
+                                {
+                                    objAgenda.lstDetallaCitas[0].ASUNTO = objEvolucionModel.PROXIMA_CITAstr;
+                                }
                             }
                         }
                     }
                 }
+                
 
                 
                 // A partir de aca ya no hay validaciones ya entramos a guardar la cita
@@ -541,13 +829,26 @@ public class Worker : BackgroundService
                 else
                 {
                     objAgenda.lstConfirmacionesPedidas = new List<ConfirmacionesPedidasModel>();
-                    await GuardarDatosAgenda(clientId, objAgenda);
-
+                    if (editar)
+                    {
+                        await EditarDatosAgenda(clientId, objAgenda);
+                    }
+                    else
+                    {
+                        await GuardarDatosAgenda(clientId, objAgenda);
+                    }
                 }
             }
             else
             {
-                await GuardarDatosAgenda(clientId, objAgenda);
+                if (editar)
+                {
+                    await EditarDatosAgenda(clientId, objAgenda);
+                }
+                else
+                {
+                    await GuardarDatosAgenda(clientId, objAgenda);
+                }
             }
         }
         catch (Exception e)
@@ -559,12 +860,50 @@ public class Worker : BackgroundService
         
     }
 
+    public async Task EditarDatosAgenda(string clientId, RespuestaConsultarPorDiaYPorUnidadModel objAgenda)
+    {
+        try
+        {
+            var objTHistorialServicios = new THISTORIALServicios();
+            var objTCitasServicios = new TCITASServicios();
+            var objDetalleCitasServicios = new TDETALLECITASServicios();
+            var objDetalleCitasEditar = objAgenda.detalleCitaEditar;
+            var objDetalleCitas= objAgenda.lstDetallaCitas[0];
+            if (objDetalleCitasEditar.SILLA != null && objDetalleCitasEditar.FECHA != null && objDetalleCitasEditar.HORA != null)
+            {
+                var existeAgenda = await objTCitasServicios.ConsultarPorId(objDetalleCitas.SILLA ?? 0, objDetalleCitas.FECHA ?? DateTime.MinValue);
+                if (existeAgenda == null || existeAgenda.SILLA <= 0)
+                {
+                    var objCita = new TCITAS();
+                    objCita.SILLA = objDetalleCitas.SILLA ?? 0;
+                    objCita.FECHA = objDetalleCitas.FECHA ?? DateTime.MinValue;
+                    objCita.FECHA_TEXTO = objAgenda.citas.FECHA_TEXTO; //Toca consultar el intervalo segun la silla y ponerlo;
+                    await objTCitasServicios.Agregar(objCita);
+                }
+                await objDetalleCitasServicios.Editar(objDetalleCitasEditar.FECHA??DateTime.Today, objDetalleCitasEditar.SILLA??0, objDetalleCitasEditar.HORA??TimeSpan.Zero, objDetalleCitas);
+                var mensajeDescripcion = "Se edito la cita de " + objDetalleCitasEditar.NOMBRE + "que estaba en la silla " + objDetalleCitasEditar.SILLA + " el dia " + objDetalleCitasEditar.FECHA.Value.Date + " a las " + objDetalleCitas.HORA + " y se programo para el dia " +
+                    objDetalleCitas.FECHA.Value.Date + " a las " + objDetalleCitas.HORA + "en la silla" + objDetalleCitas.SILLA;
+                var objTHistorial = new THISTORIAL() { DESCRIPCION = mensajeDescripcion, FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = objDetalleCitas.ID, IDANAMNESIS = int.Parse(objDetalleCitas.ID) };
+                await objTHistorialServicios.Agregar(objTHistorial);
+                
+                var objResp = new RespuestaConsultarPorDiaYPorUnidadModel();
+                objResp.lstConfirmacionesPedidas = new List<ConfirmacionesPedidasModel>();
+                objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "Cita editada correctamente", nombreConfirmacion = "CITA_GUARDADA", pedirConfirmar = false, esMensajeRestrictivo = false });
+                await _hubConnection.InvokeAsync("RespuestaAgendarCita", clientId, JsonConvert.SerializeObject(objResp));
+            }
+        }
+        catch (Exception)
+        {
+
+            throw;
+        }
+    }
 
     public async Task GuardarDatosAgenda(string clientId, RespuestaConsultarPorDiaYPorUnidadModel objAgenda)
     {
         try
         {
-            
+            var objTHistorialServicios = new THISTORIALServicios();
             var objTCitasServicios = new TCITASServicios();
             var objDetalleCitasServicios = new TDETALLECITASServicios();
             var objDetalleCitas = objAgenda.lstDetallaCitas[0];
@@ -581,6 +920,9 @@ public class Worker : BackgroundService
                     await objTCitasServicios.Agregar(objCita);
                 }
                 await objDetalleCitasServicios.Agregar(objDetalleCitas);
+                var mensajeDescripcion = "Se agrego la cita de " + objDetalleCitas.NOMBRE + "en la silla " + objDetalleCitas.SILLA + " el dia " + objDetalleCitas.FECHA.Value.Date + " a las " + objDetalleCitas.HORA;
+                var objTHistorial = new THISTORIAL() { DESCRIPCION = mensajeDescripcion, FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = objDetalleCitas.ID, IDANAMNESIS = int.Parse(objDetalleCitas.ID) };
+                await objTHistorialServicios.Agregar(objTHistorial);
                 var objResp = new RespuestaConsultarPorDiaYPorUnidadModel();
                 objResp.lstConfirmacionesPedidas = new List<ConfirmacionesPedidasModel>();
                 objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "Cita guardada correctamente", nombreConfirmacion = "CITA_GUARDADA", pedirConfirmar = false, esMensajeRestrictivo = false }); 
@@ -598,7 +940,7 @@ public class Worker : BackgroundService
         }
     }
 
-    public async Task<bool> BuscarEspacioAgenda(string IN_SILLA, DateTime IN_FECHA, string IN_TIPO, string HORAINI, string HORAFIN, int INTERVALO, string PARARINI, string PARARFIN, string h1, string h2)
+    public async Task<bool> BuscarEspacioAgenda(string IN_SILLA, DateTime IN_FECHA, string IN_TIPO, string HORAINI, string HORAFIN, int INTERVALO, string PARARINI, string PARARFIN, string h1, string h2, TDETALLECITAS? citaEditar = null)
     {
         //var time1 = TimeSpan.Parse(h1);
         //var time2 = TimeSpan.Parse(h2);
@@ -609,12 +951,12 @@ public class Worker : BackgroundService
             {
                 var lstAgendaDelDiaPorFecha = await _dbcontext.P_AGENDA1(IN_SILLA, IN_FECHA.Date, "1", HORAINI, HORAFIN, INTERVALO, "", "");
                 var lstAgendaDelDiaPorFechaFiltrado = lstAgendaDelDiaPorFecha.Where(x => x.OUT_HORA >= TimeSpan.Parse(h1) && x.OUT_HORA <= TimeSpan.Parse(h2).Subtract(TimeSpan.FromMinutes(1)) && !string.IsNullOrEmpty(x.OUT_NOMBRE));
-                //if (editar)
-                //{
-                //    var lstAgendaDelDiaPorFechaFiltradoMenosElQueSeEdita = lstAgendaDelDiaPorFechaFiltrado.Where(x => x.OUT_HORA_CITA != HORACITAEDITAR && x.OUT_NOMBRE != NOMBREAEDITAR);
-                //    return lstAgendaDelDiaPorFechaFiltradoMenosElQueSeEdita.Count() == 0;
-                //}
-                //else
+                if (citaEditar != null && citaEditar.FECHA != null && citaEditar.SILLA != null && citaEditar?.HORA != null)
+                {
+                    var lstAgendaDelDiaPorFechaFiltradoMenosElQueSeEdita = lstAgendaDelDiaPorFechaFiltrado.Where(x => x.OUT_HORA_CITA != citaEditar.HORA && x.OUT_NOMBRE != citaEditar.NOMBRE);
+                    return lstAgendaDelDiaPorFechaFiltradoMenosElQueSeEdita.Count() == 0;
+                }
+                else
                 {
                     return lstAgendaDelDiaPorFechaFiltrado.Count() == 0;
                 }
@@ -690,9 +1032,29 @@ public class Worker : BackgroundService
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            var dateTime = (DateTime)reader.Value;
-            //var dateTime = DateTime.Parse(timeString);
-            return dateTime.TimeOfDay;
+            TimeSpan tiempo;
+            if (reader.Value == null)
+            {
+                return null;
+            }
+            else if (reader.Value is DateTime)
+            {
+                var dateTime = (DateTime)reader.Value;
+                return dateTime.TimeOfDay;
+            }
+            else if (reader.Value is TimeSpan)
+            {
+                return (TimeSpan)reader.Value;
+            }
+            else if (TimeSpan.TryParse((string)reader.Value, out tiempo))
+            {
+                return tiempo;
+            }
+            else
+            {
+                var dateTime = (DateTime)reader.Value;
+                return dateTime.TimeOfDay;
+            }
         }
 
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
