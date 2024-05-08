@@ -52,7 +52,22 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        
+        public async Task<List<TDETALLECITAS>> ConsultarCitasDePacientePorTipo(string Tipo, DateTime fecha)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TDETALLECITAS
+                    .Where(x => EF.Functions.Like(x.NOMBRE, $"%{Tipo}%") || EF.Functions.Like(x.ID, $"%{Tipo}%") || EF.Functions.Like(x.TELEFONO, $"%{Tipo}%"))
+                    .Where(x => x.FECHA >= fecha.Date)
+                    .OrderBy(x => x.FECHA)
+                    .ThenBy(x => x.HORA)
+                    .ToListAsync();
+                return obj ?? new List<TDETALLECITAS>();
+            }
+        }
+
+
+
         public async Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA)
         {
             using (var _dbcontext = new AppDbContext())
@@ -120,6 +135,24 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<int> ConsultarPacientesAsistieronEntreFechas(DateTime fechaInicio, DateTime fechaFin)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj =await _dbcontext.TDETALLECITAS.Where(x => x.FECHA >= fechaInicio && x.FECHA <= fechaFin && x.ASISTENCIA == "SI").CountAsync();
+                return obj;
+            }
+        }
+
+        public async Task<int> ConsultarPacientesNoAsistieronEntreFechas(DateTime fechaInicio, DateTime fechaFin)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA >= fechaInicio && x.FECHA <= fechaFin && x.ASISTENCIA == "NO").CountAsync();
+                return obj;
+            }
+        }
+
 
 
 
@@ -161,9 +194,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<bool> Editar(DateTime FECHA, int SILLA, TimeSpan HORA, TDETALLECITAS tdetallecitas);
         Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA);
         Task<TDETALLECITAS> ConsultarPorIdDetalleCitas(string ID);
+        Task<List<TDETALLECITAS>> ConsultarCitasDePacientePorTipo(string Tipo, DateTime fecha);
         Task<List<TDETALLECITAS>> ConsultarPorFechaySilla(DateTime FECHA, int SILLA);
         Task<List<TDETALLECITAS>> ConsultarPorFechaSillaHora(DateTime FECHA, int SILLA, TimeSpan HORA);
         Task<List<TDETALLECITAS>> ConsultarPacienteConCitaRepetida(string NOMBRE, DateTime FECHA, string historia);
+        Task<int> ConsultarPacientesAsistieronEntreFechas(DateTime fechaInicio, DateTime fechaFin);
+
         Task<bool> Borrar(DateTime FECHA, int SILLA, TimeSpan HORA);
     }
 }

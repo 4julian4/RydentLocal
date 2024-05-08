@@ -7,6 +7,9 @@ using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
+using System.Collections.Generic;
+using System.Data;
+using System.Numerics;
 
 public class AppDbContext : DbContext
 {
@@ -52,24 +55,63 @@ public class AppDbContext : DbContext
     public DbSet<THISTORIAL> THISTORIAL { get; set; }
     public DbSet<TCITASCANCELADAS> TCITASCANCELADAS { get; set; }
     public DbSet<T_RIPS_DX> T_RIPS_DX { get; set; }
-    public DbSet<T_RIPS_PROCEDIMIENTOS> T_RIPS_PROCEDIMIENTOS { get; set; }
-
+    public DbSet<T_RIPS_PROCEDIMIENTOS> T_RIPS_PROCEDIMIENTOS { get; set; } 
+    public DbSet<T_DEFINICION_TRATAMIENTO> T_DEFINICION_TRATAMIENTO { get; set; }
+    public DbSet<T_PRESUPUESTOS_MAESTRA> T_PRESUPUESTOS_MAESTRA { get; set; }
+    //public DbSet<RespuestaSaldoPorDoctor> RespuestaSaldoPorDoctor { get; set; }
     
+
+
+
+
     //public DbSet<Antecedentes> Antecedentes { get; set; }
     //public DbSet<DatosPersonales> DatosPersonales { get; set; }
 
     //[Keyless]
     DbSet<P_BUSCARPACIENTE> P_BUSCARPACIENTE_Result { get; set; }
     DbSet<P_AGENDA1> P_AGENDA1_Result { get; set; }
+    DbSet<P_CONSULTAR_ESTACUENTAPACIENTE> P_CONSULTAR_ESTACUENTAPACIENTE_Result { get; set; }
+    DbSet<P_CONSULTAR_ESTACUENTA> P_CONSULTAR_ESTACUENTA_Result { get; set; }
+    public DbSet<RespuestaSaldoPorDoctor> RespuestaSaldoPorDoctor { get; set;}
     public async Task<List<P_BUSCARPACIENTE>> P_BUSCARPACIENTE(int TIPO, string P_VALOR)
     {
         var TIPOParameter = new FbParameter("TIPO", TIPO);
         var P_VALORParameter = new FbParameter("P_VALOR", P_VALOR);
-        var s = await this.P_BUSCARPACIENTE_Result.FromSqlRaw("select * from P_BUSCARPACIENTE(@TIPO, @P_VALOR)", TIPOParameter, P_VALORParameter).ToListAsync();
+        var s = await this.P_BUSCARPACIENTE_Result.FromSqlRaw("select distinct * from P_BUSCARPACIENTE(@TIPO, @P_VALOR)", TIPOParameter, P_VALORParameter).ToListAsync();
         return s;
     }
 
-   
+    [Keyless]
+    private class Generador
+    {
+        public int NUMERO { get; set; }
+    }
+    DbSet<Generador> Generador_Result { get; set; }
+    public async Task<string> GEN_CONSECUTIVO_RIPS()
+    {
+        var s = await this.Generador_Result.FromSqlRaw("SELECT GEN_ID(GEN_CONSECUTIVO, 1) NUMERO FROM rdb$database").FirstOrDefaultAsync();
+        return s.NUMERO.ToString();
+    }
+    
+
+    public async Task<List<P_CONSULTAR_ESTACUENTAPACIENTE>>P_CONSULTAR_ESTACUENTAPACIENTE(int IDANAMNESIS)
+    {
+        var IDANAMNESISParameter = new FbParameter("IDANAMNESIS", IDANAMNESIS);
+        var s = await this.P_CONSULTAR_ESTACUENTAPACIENTE_Result.FromSqlRaw("select * from P_CONSULTAR_ESTACUENTAPACIENTE(@IDANAMNESIS)", IDANAMNESISParameter).ToListAsync();
+        return s;
+    }
+
+    public async Task<List<P_CONSULTAR_ESTACUENTA>> P_CONSULTAR_ESTACUENTA(int ID, int FASE, int IDDOCTOR)
+    {
+        var IDParameter = new FbParameter("ID", ID);
+        var FASEParameter = new FbParameter("FASE", FASE);
+        var IDDOCTORParameter = new FbParameter("IDDOCTOR", IDDOCTOR);
+        var s = await this.P_CONSULTAR_ESTACUENTA_Result.FromSqlRaw("select * from P_CONSULTAR_ESTACUENTA(@ID, @FASE, @IDDOCTOR)", IDParameter, FASEParameter, IDDOCTORParameter).ToListAsync();
+        return s;
+    }
+
+        
+
     public async Task<List<P_AGENDA1>> P_AGENDA1(string IN_SILLA, DateTime IN_FECHA, string IN_TIPO, string HORAINI, string HORAFIN, int INTERVALO, string PARARINI, string PARARFIN)
     {
         var IN_SILLAParameter = new FbParameter("IN_SILLA", IN_SILLA);
@@ -108,7 +150,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TCITASCANCELADAS>()
             .HasKey(c => new { c.SILLA, c.FECHA, c.HORA });
         modelBuilder.Entity<T_ADICIONALES_ABONOS>()
-            .HasKey(c => new { c.ID, c.IDENTIFICADOR, c.IDDOCTOR, c.FASE });    
+            .HasKey(c => new { c.ID, c.IDENTIFICADOR, c.IDDOCTOR, c.FASE });
+        modelBuilder.Entity<T_DEFINICION_TRATAMIENTO>()
+            .HasKey(c => new { c.ID, c.FASE, c.IDDOCTOR });
         modelBuilder.Entity<TCITAS>()
             .HasKey(c => new { c.SILLA, c.FECHA });
         modelBuilder.Entity<TDETALLECITAS>()
@@ -127,6 +171,7 @@ public class AppDbContext : DbContext
             .HasKey(c => new { c.FECHA });
         modelBuilder.Entity<TCODIGOS_CIUDAD>()
             .HasKey(c => new { c.CODIGO_CIUDAD });
+
         //modelBuilder.Entity<TANAMNESIS>()
         //   .HasOne(t => t.DatosPersonales)
         //   .WithOne()
