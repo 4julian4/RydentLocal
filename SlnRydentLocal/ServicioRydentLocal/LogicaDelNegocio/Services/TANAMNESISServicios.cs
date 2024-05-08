@@ -46,6 +46,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<int> ConsultarTotalPacientesNuevosEntreFechas(DateTime fechaInicio, DateTime fechaFin)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TANAMNESIS.Where(x => x.FECHA_INGRESO_DATE >= fechaInicio && x.FECHA_INGRESO_DATE <= fechaFin).CountAsync();
+                return obj;
+                
+            }
+        }
+
         public async Task<TANAMNESIS> ConsultarPorIdTexto(string IDANAMNESIS_TEXTO)
         {
             using (var _dbcontext = new AppDbContext())

@@ -46,7 +46,18 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<List<int>> ConsultarTodosLosTratamientosIdAnamnesisPorDoctor(int doctor)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var ids = await (from t in _dbcontext.TTRATAMIENTO
+                                 where t.ID_DOCTOR == doctor
+                                 && _dbcontext.TANAMNESIS.Any(a => t.IDTRATAMIENTO == a.IDANAMNESIS && (a.ACTIVO) != 1)
+                                 select t.IDTRATAMIENTO).Distinct().ToListAsync();
 
+                return ids;
+            }
+        }
 
 
         public async Task<bool> Editar(int IDTRATAMIENTO, DateTime FECHA, TTRATAMIENTO ttratamiento)
@@ -73,6 +84,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<TTRATAMIENTO> Agregar(TTRATAMIENTO ttratamiento);
         Task<bool> Editar(int IDTRATAMIENTO, DateTime FECHA, TTRATAMIENTO ttratamiento);
         Task<TTRATAMIENTO> ConsultarPorId(int IDTRATAMIENTO, DateTime FECHA);
+        Task<List<int>> ConsultarTodosLosTratamientosIdAnamnesisPorDoctor(int doctor);
         Task Borrar(int IDTRATAMIENTO, DateTime FECHA);
     }
 }

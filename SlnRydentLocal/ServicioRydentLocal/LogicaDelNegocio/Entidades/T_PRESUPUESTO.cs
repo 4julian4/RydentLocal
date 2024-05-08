@@ -7,15 +7,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
     {
         public int ID { get; set; }
         public int? ID_PLANTTO { get; set; }
-        public double? COSTO { get; set; }
-        public double? DESCUENTO { get; set; }
+        public decimal? COSTO { get; set; }
+        public decimal? DESCUENTO { get; set; }
         public int? ID_MAESTRA { get; set; }
         public string? PROCEDIMIENTO { get; set; }
         public string? DIENTE { get; set; }
         public string? CODIGO_PROCEDIMIENTO { get; set; }
         public int? IDCONVENIO { get; set; }
         public int? IDREMITIDO_A { get; set; }
-        public int? DOCTOR { get; set; }
+        public string? DOCTOR { get; set; }
 
     }
 }

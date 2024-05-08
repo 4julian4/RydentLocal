@@ -56,6 +56,11 @@ public class Worker : BackgroundService
             await BuscarPaciente(valorDeBusqueda, Convert.ToInt32(tipoBuqueda), clientId);
         });
 
+        _hubConnection.On<string, string>("BuscarCitasPacienteAgenda", async (clientId, valorBuscarAgenda) =>
+        {
+            await BuscarCitasPacienteAgenda(valorBuscarAgenda, clientId);
+        });
+
         _hubConnection.On<string, string>("ObtenerDatosPersonalesCompletosPaciente", async (clientId, idAnanesis) =>
         {
             await BuscarDatosPersonalesCompletosPacientes(clientId, Convert.ToInt32(idAnanesis));
@@ -87,6 +92,12 @@ public class Worker : BackgroundService
             await ObtenerCodigosEps(clientId);
         });
 
+        _hubConnection.On<string, DateTime, DateTime>("ObtenerDatosAdministrativos", async (clientId, fechaInicio, fechaFin) =>
+        {
+            await ObtenerDatosAdministrativos(clientId, fechaInicio, fechaFin);
+        });
+
+
         _hubConnection.On<string, string, DateTime>("ObtenerConsultaPorDiaYPorUnidad", async (clientId, silla, fecha) =>
         {
             await ConsultarPorDiaYPorUnidad(clientId, Convert.ToInt32(silla), fecha);
@@ -103,6 +114,11 @@ public class Worker : BackgroundService
         _hubConnection.On<string, string>("AgendarCita", async (clientId, modelocrearcita) =>
         {
             await ObtenerValidacionesAgenda(clientId, modelocrearcita);
+        });
+
+        _hubConnection.On<string, string>("ConsultarEstadoCuenta", async (clientId,modeloDatosParaConsultarEstadoCuenta) =>
+        {
+            await ConsultarEstadoCuenta(clientId, modeloDatosParaConsultarEstadoCuenta);
         });
     }
     //----------------------Pasos:
@@ -239,7 +255,28 @@ public class Worker : BackgroundService
     }
     
     
-    
+    public async Task BuscarCitasPacienteAgenda(string valorBuscarAgenda, string clientId)
+    {
+        var objDetalleCitas = new TDETALLECITASServicios();
+        var listDetalleCitas = await objDetalleCitas.ConsultarCitasDePacientePorTipo(valorBuscarAgenda, DateTime.Now.Date);
+        
+        var respuestaBuscarCitasPacienteAgenda = listDetalleCitas.ConvertAll(item => new RespuestaBusquedaCitasPacienteModel()
+        {
+            ID=item.ID,
+            NOMBRE_PACIENTE=item.NOMBRE,
+            TELEFONO_PACIENTE=item.TELEFONO,
+            FECHA_CITA= item.FECHA?.Date,
+            HORA_CITA =item.HORA,
+            SILLA_CITA=item.SILLA.ToString(),
+            DOCTOR=item.DOCTOR,
+            NUMDOCUMENTO = item.CEDULA,
+            OBSERVACIONES = item.OBSERVACIONES,
+            ASUNTO = item.ASUNTO,
+            IDCONSECUTIVO = item.IDCONSECUTIVO
+
+        });
+        await _hubConnection.InvokeAsync("RespuestaBuscarCitasPacienteAgenda", clientId, JsonConvert.SerializeObject(respuestaBuscarCitasPacienteAgenda));
+    }
     public async Task BuscarPaciente(string valorDeBusqueda, int tipoBusqueda,  string clientId)
     {
         var objAname = new TANAMNESISServicios();
@@ -290,8 +327,113 @@ public class Worker : BackgroundService
         await _hubConnection.InvokeAsync("RespuestaObtenerCodigosEps", clientId, JsonConvert.SerializeObject(respuestaBuscarEps));
     }
 
+    public async Task ObtenerDatosAdministrativos (string clientId, DateTime fechaInicio, DateTime fechaFin)
+    {
+        var objAnamnesis = new TANAMNESISServicios();
+        var objPacuentesNuevos = await objAnamnesis.ConsultarTotalPacientesNuevosEntreFechas(fechaInicio.Date, fechaFin.Date);
+        var objDetalleCitas = new TDETALLECITASServicios();
+        var objPacientesAsistieron = await objDetalleCitas.ConsultarPacientesAsistieronEntreFechas(fechaInicio.Date, fechaFin.Date);
+        var objPacientesNoAsistieron = await objDetalleCitas.ConsultarPacientesNoAsistieronEntreFechas(fechaInicio.Date, fechaFin.Date);
+        var objT_Adicionales_Abonos = new T_ADICIONALES_ABONOSServicios();
+        var objPacientesAbonaron =  await objT_Adicionales_Abonos.ConsultarPacientesAbonaronEntreFechas(fechaInicio.Date, fechaFin.Date);
+        var objTotalAbonado = await objT_Adicionales_Abonos.ConsultarTotalAbonadoEntreFechas(fechaInicio.Date, fechaFin.Date);
+        var objTCitasCanceladas = new TCITASCANCELADASServicios();
+        var objCitasCanceladas = await objTCitasCanceladas.ConsultarCitasCanceladasEntreFechas(fechaInicio.Date, fechaFin.Date);
+        var respuestaDatosAdministrativos = new RespuestaDatosAdministrativos();
+        respuestaDatosAdministrativos.pacientesNuevos = objPacuentesNuevos;
+        respuestaDatosAdministrativos.pacientesAsistieron = objPacientesAsistieron;
+        respuestaDatosAdministrativos.pacientesNoAsistieron = objPacientesNoAsistieron;
+        respuestaDatosAdministrativos.pacientesAbonaron = objPacientesAbonaron;
+        respuestaDatosAdministrativos.citasCanceladas = objCitasCanceladas;
+        respuestaDatosAdministrativos.totalIngresos = objTotalAbonado;
+        await _hubConnection.InvokeAsync("RespuestaObtenerDatosAdministrativos", clientId, JsonConvert.SerializeObject(respuestaDatosAdministrativos));
+    }
 
-    
+    public async Task ConsultarEstadoCuenta (string clientId, string modeloDatosParaConsultarEstadoCuenta)
+    {
+        var settings = new JsonSerializerSettings();
+        var objDatosParaConsultarEstadoCuenta = JsonConvert.DeserializeObject<RespuestaConsultarEstadoCuenta>(modeloDatosParaConsultarEstadoCuenta, settings);
+        var objAdicionalesAbonos = new T_ADICIONALES_ABONOSServicios();
+        var objRespuestaConsultarEstadoCuenta = new RespuestaConsultarEstadoCuenta();
+        objRespuestaConsultarEstadoCuenta.ID = objDatosParaConsultarEstadoCuenta.ID;
+        objRespuestaConsultarEstadoCuenta.IDDOCTOR = objDatosParaConsultarEstadoCuenta.IDDOCTOR;
+        var objDefinicionTratamiento = new T_DEFINICION_TRATAMIENTOServicios();
+        var valor = 0m;
+        var descuento = 0m;
+        var abonos = 0m;
+        var descuentos = 0m;
+        var restante = 0m;
+        var costoTratamiento = 0m;
+        using (var _dbcontext = new AppDbContext())
+        {
+            var lstDefinicionTratamiento = await objDefinicionTratamiento.ConsultarPorIdAnamnesisIdDoctor(objDatosParaConsultarEstadoCuenta.ID ?? 0, objDatosParaConsultarEstadoCuenta.IDDOCTOR ?? 0);
+            if (lstDefinicionTratamiento.Count <= 0)
+            {
+                objRespuestaConsultarEstadoCuenta.mensajeSinTratamiento = true;
+                await _hubConnection.InvokeAsync("RespuestaConsultarEstadoCuenta", clientId, JsonConvert.SerializeObject(objRespuestaConsultarEstadoCuenta));
+                return;
+            }
+            objRespuestaConsultarEstadoCuenta.mensajeSinTratamiento= false;
+            var listaFases = lstDefinicionTratamiento.Select(x => x.FASE).OrderBy(fase => fase).ToList();
+            objRespuestaConsultarEstadoCuenta.lstFases = listaFases;
+            if (objDatosParaConsultarEstadoCuenta.FASE == null || objDatosParaConsultarEstadoCuenta.FASE <= 0)
+            {
+                objRespuestaConsultarEstadoCuenta.FASE = listaFases.LastOrDefault();
+            }
+            else
+            {
+                objRespuestaConsultarEstadoCuenta.FASE = objDatosParaConsultarEstadoCuenta.FASE;
+            }
+            var objDefinicionTratamientoPorFase= await objDefinicionTratamiento.ConsultarPorId(objDatosParaConsultarEstadoCuenta.ID ?? 0, objDatosParaConsultarEstadoCuenta.IDDOCTOR ?? 0, objRespuestaConsultarEstadoCuenta.FASE ?? 0);
+            objRespuestaConsultarEstadoCuenta.CONSECUTIVO = objDefinicionTratamientoPorFase.CONSECUTIVO;
+            if(objDefinicionTratamientoPorFase.VALOR_TRATAMIENTO == 0 && objDefinicionTratamientoPorFase.NUMERO_CUOTAS == 1)
+            {
+                objRespuestaConsultarEstadoCuenta.tratamientoSinFinanciar = true;
+            }
+            else
+            {
+                objRespuestaConsultarEstadoCuenta.tratamientoSinFinanciar = false;
+            }
+            var objPConsultarEstadoCuenta = new List<P_CONSULTAR_ESTACUENTA>();
+            objPConsultarEstadoCuenta = await _dbcontext.P_CONSULTAR_ESTACUENTA(objRespuestaConsultarEstadoCuenta.ID ?? 0, objRespuestaConsultarEstadoCuenta.FASE ?? 0, objRespuestaConsultarEstadoCuenta.IDDOCTOR ?? 0);
+            if (objPConsultarEstadoCuenta.Count > 0)
+            {
+                objRespuestaConsultarEstadoCuenta.P_CONSULTAR_ESTACUENTA = objPConsultarEstadoCuenta;
+                var objValorTtoSinFincanciarXpresupuesto = new RespuestasQuerysEstadoCuenta();
+                objValorTtoSinFincanciarXpresupuesto = await objAdicionalesAbonos.ConsultarValorDescuentoPorIdMaestra(objPConsultarEstadoCuenta.FirstOrDefault().IDPRESUPUESTOMAESTRA ?? 0);
+                if (objValorTtoSinFincanciarXpresupuesto!=null)
+                {
+                    valor= objValorTtoSinFincanciarXpresupuesto.VALOR ?? 0;
+                    descuento = objValorTtoSinFincanciarXpresupuesto.DESCUENTO ?? 0;
+                    costoTratamiento = valor-descuento;
+                    var objSumaAbonosDescuentos = await objAdicionalesAbonos.ConsultarTotalSumaAbonosYDescuentos(objDatosParaConsultarEstadoCuenta.ID ?? 0, objDatosParaConsultarEstadoCuenta.FASE ?? 0, objDatosParaConsultarEstadoCuenta.IDDOCTOR ?? 0);
+                    if (objSumaAbonosDescuentos != null)
+                    {
+                        abonos= objSumaAbonosDescuentos.ABONOS ?? 0;
+                        descuentos = objSumaAbonosDescuentos.DESCUENTOS ?? 0;
+                        restante = valor - (abonos +descuento+descuentos);
+                    }
+                }
+            }
+            objRespuestaConsultarEstadoCuenta.costoTratamiento = costoTratamiento;
+            objRespuestaConsultarEstadoCuenta.descuentos = descuento+descuentos;
+            objRespuestaConsultarEstadoCuenta.restante = restante;
+            objRespuestaConsultarEstadoCuenta.pagosRealizados    = abonos;
+            
+            var objConsultarEstadoCuentaPaciente = new List<P_CONSULTAR_ESTACUENTAPACIENTE>();
+            objConsultarEstadoCuentaPaciente = await _dbcontext.P_CONSULTAR_ESTACUENTAPACIENTE(objRespuestaConsultarEstadoCuenta.ID ?? 0);
+            objRespuestaConsultarEstadoCuenta.P_CONSULTAR_ESTACUENTAPACIENTE = objConsultarEstadoCuentaPaciente;
+            var objRespuestaConsultarSaldoPorDoctor = await objAdicionalesAbonos.ConsultarSaldoPorDoctor(objDatosParaConsultarEstadoCuenta.ID ?? 0);
+            objRespuestaConsultarEstadoCuenta.RespuestaSaldoPorDoctor = objRespuestaConsultarSaldoPorDoctor;
+        }
+        //var lstDefinicionTratamiento = await objDefinicionTratamiento.ConsultarPorIdAnamnesisIdDoctor(objDatosParaConsultarEstadoCuenta.ID, objDatosParaConsultarEstadoCuenta.IDDOCTOR);
+
+
+        await _hubConnection.InvokeAsync("RespuestaConsultarEstadoCuenta", clientId, JsonConvert.SerializeObject(objRespuestaConsultarEstadoCuenta));
+    }
+
+
+
 
     public async Task ObtenerDatosEvolucion(string clientId, int idAnanesis)
     {
@@ -358,12 +500,21 @@ public class Worker : BackgroundService
         datosGuardarRipsDx.CODIGOENTIDAD = codigoEntidad;
         datosGuardarRipsDx.IDANAMNESIS = objRips.IDANAMNESIS;
         //ojo falta validar lo de la factura
-        datosGuardarRipsDx.FACTURA = objRips.FACTURA;
+        if (objRips.FACTURA == "AUTO")
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                objRips.FACTURA = await _dbcontext.GEN_CONSECUTIVO_RIPS();
+            }
+        }
+        
+        datosGuardarRipsDx.FACTURA = string.IsNullOrEmpty(objRips.FACTURA) ? "PENDIENTE": objRips.FACTURA;
         datosGuardarRipsDx.IDDOCTOR = objRips.IDDOCTOR;
 
         var objTINFORMACIONREPORTESServicios = new TINFORMACIONREPORTESServicios();
         var codigoPrestador = await objTINFORMACIONREPORTESServicios.ConsultarCodigoPrestador(objRips.IDDOCTOR ?? 0);
-        datosGuardarRipsDx.CODIGOPRESTADOR = codigoPrestador;
+        datosGuardarRipsDx.CODIGOPRESTADOR = string.IsNullOrEmpty(codigoPrestador) ? "000000" : codigoPrestador;
+        
         
         datosGuardarRipsDx.TIPOIDENTIFICACION = objTAnamnesis.DOCUMENTO_IDENTIDAD;
         datosGuardarRipsDx.IDENTIFICACION = objTAnamnesis.CEDULA_NUMERO;

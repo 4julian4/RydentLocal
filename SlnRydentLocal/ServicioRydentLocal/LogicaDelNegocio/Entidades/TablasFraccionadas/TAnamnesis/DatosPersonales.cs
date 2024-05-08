@@ -14,6 +14,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAna
         [Key]
         public int IDANAMNESIS { set; get; }
         public string? IDANAMNESIS_TEXTO { set; get; }
+        public string? IMPORTANTE { set; get; }
         public string? NOTA_IMPORTANTE { set; get; }
         public long? COMPARACION { set; get; }
         public string? FECHA_INGRESO { set; get; }
