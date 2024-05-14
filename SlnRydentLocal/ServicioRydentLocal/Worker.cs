@@ -51,6 +51,11 @@ public class Worker : BackgroundService
             await ConsultarPorIdDoctor(clientId, Convert.ToInt32(idDoctor));
         });
 
+        _hubConnection.On<string, string>("ObtenerDoctorSiLoCambian", async (clientId, idDoctor) =>
+        {
+            await ObtenerDoctorSiLoCambian(clientId, Convert.ToInt32(idDoctor));
+        });
+
         _hubConnection.On<string, string, string>("BuscarPaciente", async (clientId, tipoBuqueda, valorDeBusqueda) =>
         {
             await BuscarPaciente(valorDeBusqueda, Convert.ToInt32(tipoBuqueda), clientId);
@@ -253,8 +258,18 @@ public class Worker : BackgroundService
         respuestaObtenerDoctor.totalPacientes = await objAname.ConsultarTotalPacientesPorDoctor(idDoctor);
         await _hubConnection.InvokeAsync("RespuestaObtenerDoctor", clientId, JsonConvert.SerializeObject(respuestaObtenerDoctor));
     }
-    
-    
+
+    public async Task ObtenerDoctorSiLoCambian(string clientId, int idDoctor)
+    {
+        var objDOCTORES = new TDATOSDOCTORESServicios();
+        var objAname = new TANAMNESISServicios();
+        var respuestaObtenerDoctor = new RespuestaObtenerDoctorModel();
+        respuestaObtenerDoctor.doctor = await objDOCTORES.ConsultarPorId(idDoctor);
+        respuestaObtenerDoctor.totalPacientes = await objAname.ConsultarTotalPacientesPorDoctor(idDoctor);
+        await _hubConnection.InvokeAsync("RespuestaObtenerDoctorSiLoCambian", clientId, JsonConvert.SerializeObject(respuestaObtenerDoctor));
+    }
+
+
     public async Task BuscarCitasPacienteAgenda(string valorBuscarAgenda, string clientId)
     {
         var objDetalleCitas = new TDETALLECITASServicios();
