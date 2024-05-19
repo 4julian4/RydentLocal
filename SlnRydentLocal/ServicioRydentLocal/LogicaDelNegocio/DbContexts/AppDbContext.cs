@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<TDATOSDOCTORES> TDATOSDOCTORES { get; set; }
     public DbSet<TEVOLUCION> TEVOLUCION { get; set; }
     public DbSet<THORARIOSAGENDA> THORARIOSAGENDA { get; set; }
+    public DbSet<THORARIOSASUNTOS> THORARIOSASUNTOS { get; set; }
     public DbSet<TINFORMACIONREPORTES> TINFORMACIONREPORTES { get; set; }
     public DbSet<TTRATAMIENTO> TTRATAMIENTO { get; set; }
     public DbSet<TPLANTRATAMIENTO> TPLANTRATAMIENTO { get; set; }
@@ -72,7 +73,9 @@ public class AppDbContext : DbContext
     DbSet<P_AGENDA1> P_AGENDA1_Result { get; set; }
     DbSet<P_CONSULTAR_ESTACUENTAPACIENTE> P_CONSULTAR_ESTACUENTAPACIENTE_Result { get; set; }
     DbSet<P_CONSULTAR_ESTACUENTA> P_CONSULTAR_ESTACUENTA_Result { get; set; }
+    DbSet<P_CONSULTAR_MORA_ID_TEXTO> P_CONSULTAR_MORA_ID_TEXTO_Result { get; set; }
     public DbSet<RespuestaSaldoPorDoctor> RespuestaSaldoPorDoctor { get; set;}
+
     public async Task<List<P_BUSCARPACIENTE>> P_BUSCARPACIENTE(int TIPO, string P_VALOR)
     {
         var TIPOParameter = new FbParameter("TIPO", TIPO);
@@ -92,8 +95,17 @@ public class AppDbContext : DbContext
         var s = await this.Generador_Result.FromSqlRaw("SELECT GEN_ID(GEN_CONSECUTIVO, 1) NUMERO FROM rdb$database").FirstOrDefaultAsync();
         return s.NUMERO.ToString();
     }
-    
 
+    //public async Task<string> GEN_DETALLECITAS()
+    //{
+    //    var s = await this.Generador_Result.FromSqlRaw("SELECT GEN_ID(GEN_DETALLECITAS, 1) NUMERO FROM rdb$database").FirstOrDefaultAsync();
+    //    return s.NUMERO.ToString();
+    //}
+    public async Task<string> CONSULTAR_GENERADOR(string Nombre)
+    {
+        var s = await this.Generador_Result.FromSqlRaw("SELECT GEN_ID("+Nombre+", 1) NUMERO FROM rdb$database").FirstOrDefaultAsync();
+        return s.NUMERO.ToString();
+    }
     public async Task<List<P_CONSULTAR_ESTACUENTAPACIENTE>>P_CONSULTAR_ESTACUENTAPACIENTE(int IDANAMNESIS)
     {
         var IDANAMNESISParameter = new FbParameter("IDANAMNESIS", IDANAMNESIS);
@@ -110,7 +122,12 @@ public class AppDbContext : DbContext
         return s;
     }
 
-        
+    public async Task<P_CONSULTAR_MORA_ID_TEXTO> P_CONSULTAR_MORA_ID_TEXTO(string ID_TEXTO)
+    {
+        var ID_TEXTOParameter = new FbParameter("ID_TEXTO", ID_TEXTO);
+        var s = await this.P_CONSULTAR_MORA_ID_TEXTO_Result.FromSqlRaw("select * from P_CONSULTAR_MORA_ID_TEXTO(@ID_TEXTO)", ID_TEXTOParameter).FirstOrDefaultAsync();
+        return s;
+    }
 
     public async Task<List<P_AGENDA1>> P_AGENDA1(string IN_SILLA, DateTime IN_FECHA, string IN_TIPO, string HORAINI, string HORAFIN, int INTERVALO, string PARARINI, string PARARFIN)
     {
