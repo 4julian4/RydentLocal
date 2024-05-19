@@ -99,11 +99,21 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 {
                     var obj1 = obj.Where(x =>
                         (
-                            H1 >= x.HORA && H1 <= (x.HORA?.Add(TimeSpan.FromMinutes(60 * Convert.ToInt32(x.DURACION ?? "1")+1))) ||
-                            H2 >= x.HORA?.Add(TimeSpan.FromMinutes(1)) && H1 <= (x.HORA?.Add(TimeSpan.FromMinutes(60 * Convert.ToInt32(x.DURACION ?? "1") -1))) ||
-                            x.HORA >= H1 && x.HORA <= H2.Subtract(TimeSpan.FromMinutes(1))
+                            H1 >= x.HORA && H1 <= (x.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(x.DURACION ?? "1")-1))) ||
+                            H2 >= x.HORA?.Add(TimeSpan.FromSeconds(1)) && H1 <= (x.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(x.DURACION ?? "1") -1))) ||
+                            x.HORA >= H1 && x.HORA <= H2.Subtract(TimeSpan.FromSeconds(1))
                         )
                     ).ToList();
+                    foreach (var item in obj1)
+                    {
+                        var hora = item.HORA;
+                        var duracion = Convert.ToInt32(item.DURACION ?? "1");
+                        var horaFin = hora?.Add(TimeSpan.FromSeconds(60 * duracion));
+                        var hora1 = item.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(item.DURACION ?? "1") - 1));
+                        var hora2 = item.HORA?.Add(TimeSpan.FromSeconds(1));
+                        var hora3 = item.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(item.DURACION ?? "1") - 1));
+                        var hora4 = H2.Subtract(TimeSpan.FromSeconds(1));
+                    }
                     if (citaEditar != null && citaEditar.FECHA != null && citaEditar.SILLA != null && citaEditar.HORA != null)
                     {
                         obj1 = obj1.Where(x => !(x.FECHA == citaEditar.FECHA.Value.Date && x.SILLA == citaEditar.SILLA && x.HORA == citaEditar.HORA)).ToList();

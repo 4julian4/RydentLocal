@@ -18,6 +18,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos
         public List<TCODIGOS_DEPARTAMENTO> lstDepartamentos { set; get; } = new List<TCODIGOS_DEPARTAMENTO>();
         public List<T_FRASE_XEVOLUCION> lstFrasesXEvolucion { set; get; } = new List<T_FRASE_XEVOLUCION>();
         public List<THORARIOSAGENDA> lstHorariosAgenda { set; get; } = new List<THORARIOSAGENDA>();
+        public List<THORARIOSASUNTOS> lstHorariosAsuntos { set; get; } = new List<THORARIOSASUNTOS>();
         public List<TFESTIVOS> lstFestivos { set; get; } = new List<TFESTIVOS>();
         public List<TCONFIGURACIONES_RYDENT> lstConfiguracionesRydent { set; get; } = new List<TCONFIGURACIONES_RYDENT>();
         public List<TANAMNESIS>? lstAnamnesisParaAgendayBuscadores { set; get; }

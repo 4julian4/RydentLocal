@@ -201,10 +201,12 @@ public class Worker : BackgroundService
         var objCiudades = new TCODIGOS_CIUDADServicios();
         var objFrasesXEvolucion = new T_FRASE_XEVOLUCIONServicios();
         var objHorariosAgenda = new THORARIOSAGENDAServicios();
+        var objHorariosAsuntos = new THORARIOSASUNTOSServicios();
         var objFestivos = new TFESTIVOSServicios();
         var objConfiguracionesRydent = new TCONFIGURACIONES_RYDENTServicios();
         var objTAnamnesisParaAgendayBuscadores = new TANAMNESISServicios();
         respuestaPin.clave = await objPINACCESO.ConsultarPorId(pinacceso);
+        //esto se hace para evitar enviar la clave en el objeto respuestaPin el cual quedaria expuesto en el navegador web
         if (respuestaPin.clave != null)
         {
             respuestaPin.clave.CLAVE = "";
@@ -217,6 +219,7 @@ public class Worker : BackgroundService
         var listCiudades = await objCiudades.ConsultarTodos();
         var lstFrasesXEvolucion = await objFrasesXEvolucion.ConsultarTodos();
         var listHorariosAgenda = await objHorariosAgenda.ConsultarTodos();
+        var listHorariosAsuntos = await objHorariosAsuntos.ConsultarTodos();
         var listFestivos = await objFestivos.ConsultarTodos();
         var listConfiguracionesRydent = await objConfiguracionesRydent.ConsultarTodos();
         var listAnamnesisParaAgendayBuscadores = await objTAnamnesisParaAgendayBuscadores.ConsultarDatosPacientesParaCargarEnAgenda();
@@ -230,6 +233,7 @@ public class Worker : BackgroundService
             respuestaPin.lstDoctores = listDoctores.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
             respuestaPin.lstFrasesXEvolucion = lstFrasesXEvolucion;
             respuestaPin.lstHorariosAgenda = listHorariosAgenda;
+            respuestaPin.lstHorariosAsuntos = listHorariosAsuntos;
             respuestaPin.lstFestivos = listFestivos;
             respuestaPin.lstConfiguracionesRydent=listConfiguracionesRydent;
             if (listAnamnesisParaAgendayBuscadores != null && listAnamnesisParaAgendayBuscadores.Count() > 0)
@@ -826,6 +830,7 @@ public class Worker : BackgroundService
                     if (cita != null && cita.Count() > 0)
                     {
                         cita[0].ASISTENCIA = "SI";
+                        //cita[0].HORA_LLEGADA_CITA= cita[0].HORA_LLEGADA_CITA = DateTime.Now.TimeOfDay;
                         respuesta = await objDetallesCitasServicios.Editar(asistio.fecha.Date, asistio.silla, asistio.hora, cita[0]);
                         if (cita[0].ID != null && cita[0].ID != "")
                         {
@@ -851,6 +856,7 @@ public class Worker : BackgroundService
                     if (cita != null && cita.Count() > 0)
                     {
                         cita[0].ASISTENCIA = "";
+                        //cita[0].HORA_LLEGADA_CITA = null;
                         respuesta = await objDetallesCitasServicios.Editar(quitarAsistencia.fecha.Date, quitarAsistencia.silla, quitarAsistencia.hora, cita[0]);
                         if (cita[0].ID != null && cita[0].ID != "")
                         {
@@ -1072,7 +1078,13 @@ public class Worker : BackgroundService
             var objTHistorialServicios = new THISTORIALServicios();
             var objTCitasServicios = new TCITASServicios();
             var objDetalleCitasServicios = new TDETALLECITASServicios();
+            using (var _dbcontext = new AppDbContext())
+            {
+                objAgenda.lstDetallaCitas[0].IDCONSECUTIVO = int.Parse(await _dbcontext.CONSULTAR_GENERADOR("GEN_DETALLECITAS"));
+            }
+            
             var objDetalleCitas = objAgenda.lstDetallaCitas[0];
+            
             //-----------------Aca deben ir validaciones----------------------//
             if (objDetalleCitas.SILLA != null && objDetalleCitas.FECHA != null)
             {
@@ -1087,10 +1099,21 @@ public class Worker : BackgroundService
                 }
                 await objDetalleCitasServicios.Agregar(objDetalleCitas);
                 var mensajeDescripcion = "Se agrego la cita de " + objDetalleCitas.NOMBRE + "en la silla " + objDetalleCitas.SILLA + " el dia " + objDetalleCitas.FECHA.Value.Date + " a las " + objDetalleCitas.HORA;
-                var objTHistorial = new THISTORIAL() { DESCRIPCION = mensajeDescripcion, FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = objDetalleCitas.ID, IDANAMNESIS = int.Parse(objDetalleCitas.ID) };
+                var objAnamnesis = new TANAMNESISServicios();
+                var objAnamnesisModel = await objAnamnesis.ConsultarPorIdTexto(objDetalleCitas.ID);
+                var objTHistorial = new THISTORIAL() { DESCRIPCION = mensajeDescripcion, FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = objDetalleCitas.ID, IDANAMNESIS = objAnamnesisModel.IDANAMNESIS };
                 await objTHistorialServicios.Agregar(objTHistorial);
                 var objResp = new RespuestaConsultarPorDiaYPorUnidadModel();
                 objResp.lstConfirmacionesPedidas = new List<ConfirmacionesPedidasModel>();
+                var objMora = new P_CONSULTAR_MORA_ID_TEXTO();
+                using (var _dbcontext = new AppDbContext())
+                {
+                    objMora = await _dbcontext.P_CONSULTAR_MORA_ID_TEXTO(objDetalleCitas.ID);
+                }
+                if (objMora != null && objMora.MORA > 0)
+                {
+                    objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "El paciente tiene una mora de " + objMora.MORA, nombreConfirmacion = "MORA", pedirConfirmar = false, esMensajeRestrictivo = false });
+                }
                 objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "Cita guardada correctamente", nombreConfirmacion = "CITA_GUARDADA", pedirConfirmar = false, esMensajeRestrictivo = false }); 
                 await _hubConnection.InvokeAsync("RespuestaAgendarCita", clientId, JsonConvert.SerializeObject(objResp));
 
