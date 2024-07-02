@@ -59,6 +59,8 @@ public class AppDbContext : DbContext
     public DbSet<T_RIPS_PROCEDIMIENTOS> T_RIPS_PROCEDIMIENTOS { get; set; } 
     public DbSet<T_DEFINICION_TRATAMIENTO> T_DEFINICION_TRATAMIENTO { get; set; }
     public DbSet<T_PRESUPUESTOS_MAESTRA> T_PRESUPUESTOS_MAESTRA { get; set; }
+    public DbSet<TEGRESO> TEGRESO { get; set; }
+    public DbSet<TINGRESO> TINGRESO { get; set; }
     //public DbSet<RespuestaSaldoPorDoctor> RespuestaSaldoPorDoctor { get; set; }
     
 

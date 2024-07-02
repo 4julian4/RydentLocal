@@ -17,5 +17,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos
         public string PERFIL { set; get; }
         public string NUMAFILIACION { set; get; }
         public string TELEFONO { set; get; }
+        public bool NOTAIMPORTANTE { set; get; }
     }
 }

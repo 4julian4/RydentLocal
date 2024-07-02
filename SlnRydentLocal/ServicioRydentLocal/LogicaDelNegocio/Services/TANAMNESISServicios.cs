@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,13 +47,20 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        public async Task<int> ConsultarTotalPacientesNuevosEntreFechas(DateTime fechaInicio, DateTime fechaFin)
+        public async Task<List<RespuestaDatosAdministrativos.PacientesNuevos>> ConsultarTotalPacientesNuevosEntreFechas(DateTime fechaInicio, DateTime fechaFin)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TANAMNESIS.Where(x => x.FECHA_INGRESO_DATE >= fechaInicio && x.FECHA_INGRESO_DATE <= fechaFin).CountAsync();
+                var obj = await _dbcontext.TANAMNESIS
+                    .Where(x => x.FECHA_INGRESO_DATE >= fechaInicio && x.FECHA_INGRESO_DATE <= fechaFin)
+                    .Select(x => new RespuestaDatosAdministrativos.PacientesNuevos
+                    {
+                        FECHA_INGRESO_DATE = x.FECHA_INGRESO_DATE,
+                        SEXO = x.SEXO
+                    })
+                    .ToListAsync();
+
                 return obj;
-                
             }
         }
 
@@ -62,6 +70,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS_TEXTO == IDANAMNESIS_TEXTO);
                 return obj == null ? new TANAMNESIS() : obj;
+            }
+        }
+
+        public async Task<int> ConsultarPorIdTextoElIdAnamnesis(string IDANAMNESIS_TEXTO)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS_TEXTO == IDANAMNESIS_TEXTO);
+                return obj == null ? 0 : obj.IDANAMNESIS;
             }
         }
 
@@ -115,6 +132,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<string> BuscarNotaImportante(int IDANAMNESIS)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
+                return obj == null ? "" : obj.NOTA_IMPORTANTE;
+            }
+        }
+
         public async Task<bool> Editar(int IDANAMNESIS, TANAMNESIS tanamnesis)
         {
             using (var _dbcontext = new AppDbContext())
@@ -142,9 +168,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<int> ConsultarTotalPacientesPorDoctor(int IDDOCTOR);
         Task<TANAMNESIS> ConsultarPorIdTexto(string IDANAMNESIS_TEXTO);
         Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda();
-
+        Task<int> ConsultarPorIdTextoElIdAnamnesis(string IDANAMNESIS_TEXTO);
         Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR);
+        Task<List<RespuestaDatosAdministrativos.PacientesNuevos>> ConsultarTotalPacientesNuevosEntreFechas(DateTime fechaInicio, DateTime fechaFin);
         Task Borrar(int IDANAMNESIS);
+        Task<string> BuscarNotaImportante(int IDANAMNESIS);
     }
 }
         
