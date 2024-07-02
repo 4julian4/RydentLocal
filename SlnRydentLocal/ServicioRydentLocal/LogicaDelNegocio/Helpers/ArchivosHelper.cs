@@ -15,6 +15,7 @@ using System.Text;
 using System.Threading.Tasks;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Png;
+using System.IO.Compression;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Helpers
 {
@@ -33,6 +34,22 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Helpers
         //    return streamSalida.ToArray();
         //}
 
+        public static string CompressString(string text)
+        {
+            var bytes = Encoding.UTF8.GetBytes(text);
+            using (var msi = new MemoryStream(bytes))
+            using (var mso = new MemoryStream())
+            {
+                using (var gs = new GZipStream(mso, CompressionMode.Compress))
+                {
+                    msi.CopyTo(gs);
+                }
+
+                return Convert.ToBase64String(mso.ToArray());
+            }
+        }
+
+       
         public byte[] ConvertirPNGaJPEG(byte[] imagenPNG)
         {
             using var imagen = Image.Load<Rgba32>(imagenPNG);
