@@ -5,39 +5,38 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TCITASPENDIENTESServicios : ITCITASPENDIENTESServicios
     {
-        protected readonly AppDbContext _dbcontext;
-        public TCITASPENDIENTESServicios()
+        private readonly AppDbContext _dbcontext;
+        public TCITASPENDIENTESServicios(AppDbContext dbcontext)
         {
+            _dbcontext = dbcontext;
         }
+
 
         public async Task<int> Agregar(TCITASPENDIENTES tcitaspendientes)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
 
-                _dbcontext.TCITASPENDIENTES.Add(tcitaspendientes);
-                await _dbcontext.SaveChangesAsync();
-                return tcitaspendientes.ID;
-            }
+
+            _dbcontext.TCITASPENDIENTES.Add(tcitaspendientes);
+            await _dbcontext.SaveChangesAsync();
+            return tcitaspendientes.ID;
+
         }
 
         public async Task Borrar(int ID)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
-                var obj = await _dbcontext.TCITASPENDIENTES.FirstOrDefaultAsync(x => x.ID == ID);
-                _dbcontext.TCITASPENDIENTES.Remove(obj);
-                await _dbcontext.SaveChangesAsync();
-            }
+
+            var obj = await _dbcontext.TCITASPENDIENTES.FirstOrDefaultAsync(x => x.ID == ID);
+            _dbcontext.TCITASPENDIENTES.Remove(obj);
+            await _dbcontext.SaveChangesAsync();
+
         }
 
         public async Task<TCITASPENDIENTES> ConsultarPorId(int ID)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
-                var obj = await _dbcontext.TCITASPENDIENTES.FirstOrDefaultAsync(x => x.ID == ID);
-                return obj == null ? new TCITASPENDIENTES() : obj;
-            }
+
+            var obj = await _dbcontext.TCITASPENDIENTES.FirstOrDefaultAsync(x => x.ID == ID);
+            return obj == null ? new TCITASPENDIENTES() : obj;
+
         }
 
 
@@ -45,20 +44,19 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
         public async Task<bool> Editar(int ID, TCITASPENDIENTES tcitaspendientes)
         {
-            using (var _dbcontext = new AppDbContext())
+
+            var obj = await _dbcontext.TCITASPENDIENTES.FirstOrDefaultAsync(x => x.ID == ID);
+            if (obj == null)
             {
-                var obj = await _dbcontext.TCITASPENDIENTES.FirstOrDefaultAsync(x => x.ID == ID);
-                if (obj == null)
-                {
-                    return false;
-                }
-                else
-                {
-                    _dbcontext.Entry(obj).CurrentValues.SetValues(tcitaspendientes);
-                    await _dbcontext.SaveChangesAsync();
-                    return true;
-                }
+                return false;
             }
+            else
+            {
+                _dbcontext.Entry(obj).CurrentValues.SetValues(tcitaspendientes);
+                await _dbcontext.SaveChangesAsync();
+                return true;
+            }
+
         }
     }
 

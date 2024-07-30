@@ -13,12 +13,14 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public T_DEFINICION_TRATAMIENTOServicios()
         {
+            
         }
+        
         public async Task<List<T_DEFINICION_TRATAMIENTO>> ConsultarPorIdAnamnesisIdDoctor(int ID, int IDDOCTOR)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.T_DEFINICION_TRATAMIENTO.Where(x => x.ID == ID  && x.IDDOCTOR == IDDOCTOR).OrderBy(x => x.FASE).ToListAsync();
+                var obj = await _dbcontext.T_DEFINICION_TRATAMIENTO.Where(x => x.ID == ID && x.IDDOCTOR == IDDOCTOR).OrderBy(x => x.FASE).ToListAsync();
                 return obj;
             }
         }

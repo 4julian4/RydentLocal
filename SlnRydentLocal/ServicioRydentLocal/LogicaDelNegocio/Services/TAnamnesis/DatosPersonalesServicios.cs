@@ -14,7 +14,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
     public class DatosPersonalesServicios : IDatosPersonalesServicios
     {
         private readonly IMapper _mapper;
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
+        public DatosPersonalesServicios(AppDbContext dbcontext)
+        {
+            _dbcontext = dbcontext;
+        }
         public DatosPersonalesServicios()
         {
                 var mapperConfig = new MapperConfiguration(cfg =>
@@ -28,90 +32,84 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
        
         public async Task<int> Agregar(DatosPersonales datosPersonales)
         {
-            using (var _dbcontext = new AppDbContext())
+            
+            // Configura AutoMapper para ignorar el campo IDANAMNESIS solo en este mapeo
+            var mapperConfig = new MapperConfiguration(cfg =>
             {
-                // Configura AutoMapper para ignorar el campo IDANAMNESIS solo en este mapeo
-                var mapperConfig = new MapperConfiguration(cfg =>
-                {
-                    cfg.CreateMap<DatosPersonales, TANAMNESIS>()
-                       .ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());
-                    cfg.CreateMap<TANAMNESIS, DatosPersonales>()
-                       .ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());
-                });
+                cfg.CreateMap<DatosPersonales, TANAMNESIS>()
+                    .ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());
+                cfg.CreateMap<TANAMNESIS, DatosPersonales>()
+                    .ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());
+            });
 
-                var mapper = mapperConfig.CreateMapper();
+            var mapper = mapperConfig.CreateMapper();
 
-                var obj = mapper.Map<TANAMNESIS>(datosPersonales);
-                _dbcontext.TANAMNESIS.Add(obj);
-                await _dbcontext.SaveChangesAsync();
-                return obj.IDANAMNESIS; // Retorna el ID generado por la base de datos
-            }
+            var obj = mapper.Map<TANAMNESIS>(datosPersonales);
+            _dbcontext.TANAMNESIS.Add(obj);
+            await _dbcontext.SaveChangesAsync();
+            return obj.IDANAMNESIS; // Retorna el ID generado por la base de datos
+            
         }
 
         public async Task Borrar(int IDANAMNESIS)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
-                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
-                _dbcontext.TANAMNESIS.Remove(obj);
-                await _dbcontext.SaveChangesAsync();
-            }
+            
+            var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
+            _dbcontext.TANAMNESIS.Remove(obj);
+            await _dbcontext.SaveChangesAsync();
+            
         }
 
         public async Task<DatosPersonales> ConsultarPorId(int IDANAMNESIS)
         {
-            using (var _dbcontext = new AppDbContext())
+            
+            try
             {
-                try
-                {
-                    var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
-                    var tdatospersonales = _mapper.Map<DatosPersonales>(obj);
-                    return tdatospersonales ??  new DatosPersonales();
-                }
-                catch (Exception error)
-                {
-
-                    return new DatosPersonales();
-                }
-                
+                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
+                var tdatospersonales = _mapper.Map<DatosPersonales>(obj);
+                return tdatospersonales ??  new DatosPersonales();
             }
+            catch (Exception error)
+            {
+
+                return new DatosPersonales();
+            }
+                
+            
         }
 
         public async Task<int> ConsultarTotalPacientesPorDoctor(int IDDOCTOR)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
-                var obj = await _dbcontext.TTRATAMIENTO.Where(x => x.ID_DOCTOR == IDDOCTOR).Select(x => x.IDTRATAMIENTO).Distinct().ToListAsync();
-                return obj == null ? 0 : obj.Count();
-            }
+           
+            var obj = await _dbcontext.TTRATAMIENTO.Where(x => x.ID_DOCTOR == IDDOCTOR).Select(x => x.IDTRATAMIENTO).Distinct().ToListAsync();
+            return obj == null ? 0 : obj.Count();
+            
         }
 
         public async Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
-                BUSCAR = BUSCAR.Trim().Replace("  ", " ").Replace(" ", "%").ToUpper();
-                var obj = await _dbcontext.P_BUSCARPACIENTE(TIPO, BUSCAR);
-                return obj == null ? new List<P_BUSCARPACIENTE>() : obj;
-            }
+            
+            BUSCAR = BUSCAR.Trim().Replace("  ", " ").Replace(" ", "%").ToUpper();
+            var obj = await _dbcontext.P_BUSCARPACIENTE(TIPO, BUSCAR);
+            return obj == null ? new List<P_BUSCARPACIENTE>() : obj;
+            
         }
 
         public async Task<bool> Editar(int IDANAMNESIS, DatosPersonales datospersonales)
         {
-            using (var _dbcontext = new AppDbContext())
+            
+            var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
+            if (obj == null)
             {
-                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
-                if (obj == null)
-                {
-                    return false;
-                }
-                else
-                {
-                    _dbcontext.Entry(obj).CurrentValues.SetValues(datospersonales);
-                    await _dbcontext.SaveChangesAsync();
-                    return true;
-                }
+                return false;
             }
+            else
+            {
+                _dbcontext.Entry(obj).CurrentValues.SetValues(datospersonales);
+                await _dbcontext.SaveChangesAsync();
+                return true;
+            }
+            
         }
     }
 

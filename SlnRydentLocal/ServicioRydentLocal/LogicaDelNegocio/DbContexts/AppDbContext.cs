@@ -1,5 +1,6 @@
 ﻿using FirebirdSql.Data.FirebirdClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 //using RydentDatos.RydentDB;
 
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
@@ -13,6 +14,8 @@ using System.Numerics;
 
 public class AppDbContext : DbContext
 {
+      
+
     public DbSet<TANAMNESIS> TANAMNESIS { get; set; }
     public DbSet<TCITAS> TCITAS { get; set; }
     public DbSet<TDETALLECITAS> TDETALLECITAS { get; set; }
@@ -74,6 +77,7 @@ public class AppDbContext : DbContext
     DbSet<P_BUSCARPACIENTE> P_BUSCARPACIENTE_Result { get; set; }
     DbSet<P_AGENDA1> P_AGENDA1_Result { get; set; }
     DbSet<P_CONSULTAR_ESTACUENTAPACIENTE> P_CONSULTAR_ESTACUENTAPACIENTE_Result { get; set; }
+    DbSet<P_CONSULTAR_ESTACUENTA_TOTAL_F> P_CONSULTAR_ESTACUENTA_TOTAL_F_Result { get; set; }
     DbSet<P_CONSULTAR_ESTACUENTA> P_CONSULTAR_ESTACUENTA_Result { get; set; }
     DbSet<P_CONSULTAR_MORA_ID_TEXTO> P_CONSULTAR_MORA_ID_TEXTO_Result { get; set; }
     public DbSet<RespuestaSaldoPorDoctor> RespuestaSaldoPorDoctor { get; set;}
@@ -112,6 +116,16 @@ public class AppDbContext : DbContext
     {
         var IDANAMNESISParameter = new FbParameter("IDANAMNESIS", IDANAMNESIS);
         var s = await this.P_CONSULTAR_ESTACUENTAPACIENTE_Result.FromSqlRaw("select * from P_CONSULTAR_ESTACUENTAPACIENTE(@IDANAMNESIS)", IDANAMNESISParameter).ToListAsync();
+        return s;
+    }
+ 
+    public async Task<List<P_CONSULTAR_ESTACUENTA_TOTAL_F>> P_CONSULTAR_ESTACUENTA_TOTAL_F(int IDDOCTOR, DateTime IN_FECHA_INICIO, int IN_CUOTAS, DateTime FECHA_FIN)
+    {
+        var IDDOCTORParameter = new FbParameter("IDDOCTOR", IDDOCTOR);
+        var IN_FECHA_INICIOParameter = new FbParameter("IN_FECHA_INICIO", IN_FECHA_INICIO);
+        var IN_CUOTASParameter = new FbParameter("IN_CUOTAS", IN_CUOTAS);
+        var FECHA_FINParameter = new FbParameter("FECHA_FIN", FECHA_FIN);
+        var s = await this.P_CONSULTAR_ESTACUENTA_TOTAL_F_Result.FromSqlRaw("select * from P_CONSULTAR_ESTACUENTA_TOTAL_F(@IDDOCTOR, @IN_FECHA_INICIO, @IN_CUOTAS, @FECHA_FIN)", IDDOCTORParameter, IN_FECHA_INICIOParameter, IN_CUOTASParameter, FECHA_FINParameter).ToListAsync();
         return s;
     }
 
@@ -203,10 +217,14 @@ public class AppDbContext : DbContext
     }
 
 
-  
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        // Ajusta la cadena de conexión según tu configuración de Firebird.
-        optionsBuilder.UseFirebird("database=localhost:C:\\Program Files\\Acrom\\Bdr2\\R2.FDB;user=sysdba;password=masterkeyPort=3050;Dialect=3;Charset=ISO8859_1;Role=;Connection lifetime=15;Pooling=true;MinPoolSize=0;MaxPoolSize=50;Packet Size=8192;ServerType=0;");
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .Build();
+        var strConn=configuration.GetValue<string>("ConnectionStrings:FirebirdConnection") ??"";
+        optionsBuilder.UseFirebird(strConn);
     }
 }

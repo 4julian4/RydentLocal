@@ -5,10 +5,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class T_CUENTASXCOBRARServicios : IT_CUENTASXCOBRARServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public T_CUENTASXCOBRARServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(T_CUENTASXCOBRAR t_cuentasxcobrar)
         {

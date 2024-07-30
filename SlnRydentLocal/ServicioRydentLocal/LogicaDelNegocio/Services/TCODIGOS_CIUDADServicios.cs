@@ -10,11 +10,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TCODIGOS_CIUDADServicios : ITCODIGOS_CIUDADServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TCODIGOS_CIUDADServicios()
         {
+            
         }
-
+        
 
         public async Task<List<TCODIGOS_CIUDAD>> ConsultarTodos()
         {
@@ -24,8 +25,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return obj == null ? new List<TCODIGOS_CIUDAD>() : obj;
             }
         }
-
-
     }
 
     public interface ITCODIGOS_CIUDADServicios

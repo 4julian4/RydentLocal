@@ -14,7 +14,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public TINFORMACIONREPORTESServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(TINFORMACIONREPORTES tinformacionreportes)
         {
@@ -48,10 +50,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
         public async Task<string> ConsultarCodigoPrestador(int IDDOCTOR)
         {
-            int codDoctor = IDDOCTOR;
-            string query = "SELECT i.CODIGO_PRESTADOR FROM TINFORMACIONREPORTES i INNER JOIN TDATOSDOCTORES D ON d.IDREPORTE = i.ID WHERE D.id=@p0";
             using (var _dbcontext = new AppDbContext())
             {
+                int codDoctor = IDDOCTOR;
+                string query = "SELECT i.CODIGO_PRESTADOR FROM TINFORMACIONREPORTES i INNER JOIN TDATOSDOCTORES D ON d.IDREPORTE = i.ID WHERE D.id=@p0";
+
                 var codigoPrestador = await _dbcontext.TINFORMACIONREPORTES
                     .FromSqlRaw(query, codDoctor)
                     .Select(i => i.CODIGO_PRESTADOR)

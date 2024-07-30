@@ -13,13 +13,14 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public THORARIOSAGENDAServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(THORARIOSAGENDA thorariosagenda)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.THORARIOSAGENDA.Add(thorariosagenda);
                 await _dbcontext.SaveChangesAsync();
                 return thorariosagenda.SILLA;

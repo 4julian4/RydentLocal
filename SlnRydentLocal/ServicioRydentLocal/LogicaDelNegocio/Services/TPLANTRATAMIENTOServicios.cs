@@ -8,42 +8,43 @@ using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
-   
+
     public class TPLANTRATAMIENTOServicios : ITPLANTRATAMIENTOServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
+        public TPLANTRATAMIENTOServicios(AppDbContext dbcontext)
+        {
+            _dbcontext = dbcontext;
+        }
         public TPLANTRATAMIENTOServicios()
         {
         }
 
         public async Task<int> Agregar(TPLANTRATAMIENTO tplantratamiento)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
 
-                _dbcontext.TPLANTRATAMIENTO.Add(tplantratamiento);
-                await _dbcontext.SaveChangesAsync();
-                return tplantratamiento.ID;
-            }
+
+            _dbcontext.TPLANTRATAMIENTO.Add(tplantratamiento);
+            await _dbcontext.SaveChangesAsync();
+            return tplantratamiento.ID;
+
         }
 
         public async Task Borrar(int ID)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
-                var obj = await _dbcontext.TPLANTRATAMIENTO.FirstOrDefaultAsync(x => x.ID == ID);
-                _dbcontext.TPLANTRATAMIENTO.Remove(obj);
-                await _dbcontext.SaveChangesAsync();
-            }
+
+            var obj = await _dbcontext.TPLANTRATAMIENTO.FirstOrDefaultAsync(x => x.ID == ID);
+            _dbcontext.TPLANTRATAMIENTO.Remove(obj);
+            await _dbcontext.SaveChangesAsync();
+
         }
 
         public async Task<TPLANTRATAMIENTO> ConsultarPorId(int ID)
         {
-            using (var _dbcontext = new AppDbContext())
-            {
-                var obj = await _dbcontext.TPLANTRATAMIENTO.FirstOrDefaultAsync(x => x.ID == ID);
-                return obj == null ? new TPLANTRATAMIENTO() : obj;
-            }
+
+            var obj = await _dbcontext.TPLANTRATAMIENTO.FirstOrDefaultAsync(x => x.ID == ID);
+            return obj == null ? new TPLANTRATAMIENTO() : obj;
+
         }
 
 
@@ -51,20 +52,19 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
         public async Task<bool> Editar(int ID, TPLANTRATAMIENTO tplantratamiento)
         {
-            using (var _dbcontext = new AppDbContext())
+
+            var obj = await _dbcontext.TPLANTRATAMIENTO.FirstOrDefaultAsync(x => x.ID == ID);
+            if (obj == null)
             {
-                var obj = await _dbcontext.TPLANTRATAMIENTO.FirstOrDefaultAsync(x => x.ID == ID);
-                if (obj == null)
-                {
-                    return false;
-                }
-                else
-                {
-                    _dbcontext.Entry(obj).CurrentValues.SetValues(tplantratamiento);
-                    await _dbcontext.SaveChangesAsync();
-                    return true;
-                }
+                return false;
             }
+            else
+            {
+                _dbcontext.Entry(obj).CurrentValues.SetValues(tplantratamiento);
+                await _dbcontext.SaveChangesAsync();
+                return true;
+            }
+
         }
     }
 

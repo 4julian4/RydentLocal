@@ -10,11 +10,13 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TDETALLECITASServicios : ITDETALLECITASServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TDETALLECITASServicios()
         {
+
         }
 
+        
         public async Task<TDETALLECITAS> Agregar(TDETALLECITAS tdetallecitas)
         {
             using (var _dbcontext = new AppDbContext())
@@ -24,10 +26,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 await _dbcontext.SaveChangesAsync();
                 return tdetallecitas;
             }
+
         }
 
         public async Task<bool> Borrar(DateTime FECHA, int SILLA, TimeSpan HORA)
         {
+
             if (FECHA != null && SILLA != null && HORA != null)
             {
                 using (var _dbcontext = new AppDbContext())
@@ -43,7 +47,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return false;
             }
         }
-        public async Task<TDETALLECITAS>ConsultarPorIdDetalleCitas(string ID)
+        public async Task<TDETALLECITAS> ConsultarPorIdDetalleCitas(string ID)
         {
             using (var _dbcontext = new AppDbContext())
             {
@@ -57,11 +61,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TDETALLECITAS
-                    .Where(x => EF.Functions.Like(x.NOMBRE, $"%{Tipo}%") || EF.Functions.Like(x.ID, $"%{Tipo}%") || EF.Functions.Like(x.TELEFONO, $"%{Tipo}%"))
-                    .Where(x => x.FECHA >= fecha.Date)
-                    .OrderBy(x => x.FECHA)
-                    .ThenBy(x => x.HORA)
-                    .ToListAsync();
+                .Where(x => EF.Functions.Like(x.NOMBRE, $"%{Tipo}%") || EF.Functions.Like(x.ID, $"%{Tipo}%") || EF.Functions.Like(x.TELEFONO, $"%{Tipo}%"))
+                .Where(x => x.FECHA >= fecha.Date)
+                .OrderBy(x => x.FECHA)
+                .ThenBy(x => x.HORA)
+                .ToListAsync();
                 return obj ?? new List<TDETALLECITAS>();
             }
         }
@@ -83,27 +87,27 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TDETALLECITAS
-                    .Where(x => x.FECHA >= FECHA.Date && x.NOMBRE == NOMBRE && x.ID == historia)
-                    .ToListAsync();
+                .Where(x => x.FECHA >= FECHA.Date && x.NOMBRE == NOMBRE && x.ID == historia)
+                .ToListAsync();
                 return obj ?? new List<TDETALLECITAS>();
             }
         }
 
 
-        public async Task<bool> ConsultarDoctoresConCitaOtraUnidad(string DOCTOR,DateTime FECHA, TimeSpan H1, TimeSpan H2, TDETALLECITAS? citaEditar = null)
+        public async Task<bool> ConsultarDoctoresConCitaOtraUnidad(string DOCTOR, DateTime FECHA, TimeSpan H1, TimeSpan H2, TDETALLECITAS? citaEditar = null)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA==FECHA.Date && x.DOCTOR==DOCTOR).ToListAsync();
+                var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA == FECHA.Date && x.DOCTOR == DOCTOR).ToListAsync();
                 if (obj.Any())
                 {
                     var obj1 = obj.Where(x =>
                         (
-                            H1 >= x.HORA && H1 <= (x.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(x.DURACION ?? "1")-1))) ||
-                            H2 >= x.HORA?.Add(TimeSpan.FromSeconds(1)) && H1 <= (x.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(x.DURACION ?? "1") -1))) ||
+                            H1 >= x.HORA && H1 <= (x.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(x.DURACION ?? "1") - 1))) ||
+                            H2 >= x.HORA?.Add(TimeSpan.FromSeconds(1)) && H1 <= (x.HORA?.Add(TimeSpan.FromSeconds(60 * Convert.ToInt32(x.DURACION ?? "1") - 1))) ||
                             x.HORA >= H1 && x.HORA <= H2.Subtract(TimeSpan.FromSeconds(1))
                         )
-                    ).ToList();
+                        ).ToList();
                     foreach (var item in obj1)
                     {
                         var hora = item.HORA;
@@ -149,7 +153,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj =await _dbcontext.TDETALLECITAS.Where(x => x.FECHA >= fechaInicio && x.FECHA <= fechaFin && x.ASISTENCIA == "SI").CountAsync();
+                var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA >= fechaInicio && x.FECHA <= fechaFin && x.ASISTENCIA == "SI").CountAsync();
                 return obj;
             }
         }
@@ -209,7 +213,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<List<TDETALLECITAS>> ConsultarPorFechaSillaHora(DateTime FECHA, int SILLA, TimeSpan HORA);
         Task<List<TDETALLECITAS>> ConsultarPacienteConCitaRepetida(string NOMBRE, DateTime FECHA, string historia);
         Task<int> ConsultarPacientesAsistieronEntreFechas(DateTime fechaInicio, DateTime fechaFin);
-
+        Task<int> ConsultarPacientesNoAsistieronEntreFechas(DateTime fechaInicio, DateTime fechaFin);
+        Task<bool> ConsultarDoctoresConCitaOtraUnidad(string DOCTOR, DateTime FECHA, TimeSpan H1, TimeSpan H2, TDETALLECITAS? citaEditar = null);
         Task<bool> Borrar(DateTime FECHA, int SILLA, TimeSpan HORA);
     }
 }

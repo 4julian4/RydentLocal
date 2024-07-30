@@ -14,13 +14,14 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public TTRATAMIENTOServicios()
         {
+            
         }
+        
 
         public async Task<TTRATAMIENTO> Agregar(TTRATAMIENTO ttratamiento)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TTRATAMIENTO.Add(ttratamiento);
                 await _dbcontext.SaveChangesAsync();
                 return ttratamiento;

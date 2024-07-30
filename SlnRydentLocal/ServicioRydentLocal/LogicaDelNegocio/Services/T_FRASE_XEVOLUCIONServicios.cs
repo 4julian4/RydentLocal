@@ -8,11 +8,12 @@ using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
-    public class T_FRASE_XEVOLUCIONServicios: IT_FRASE_XEVOLUCIONServicios
-    { 
-        protected readonly AppDbContext _dbcontext;
+    public class T_FRASE_XEVOLUCIONServicios : IT_FRASE_XEVOLUCIONServicios
+    {
+        private readonly AppDbContext _dbcontext;
         public T_FRASE_XEVOLUCIONServicios()
         {
+            
         }
 
 

@@ -10,10 +10,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class T_PRESUPUESTOServicios : IT_PRESUPUESTOServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public T_PRESUPUESTOServicios()
         {
+            
         }
+        
 
         public async Task<int> Agregar(T_PRESUPUESTO t_presupuesto)
         {
@@ -33,7 +35,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 var obj = await _dbcontext.T_PRESUPUESTO.FirstOrDefaultAsync(x => x.ID == ID);
                 _dbcontext.T_PRESUPUESTO.Remove(obj);
                 await _dbcontext.SaveChangesAsync();
-            }
+            }       
         }
 
         public async Task<T_PRESUPUESTO> ConsultarPorId(int ID)
@@ -42,7 +44,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 var obj = await _dbcontext.T_PRESUPUESTO.FirstOrDefaultAsync(x => x.ID == ID);
                 return obj == null ? new T_PRESUPUESTO() : obj;
-            }
+            }    
         }
 
 

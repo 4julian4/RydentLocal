@@ -10,16 +10,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TCONFIGURACIONES_RYDENTServicios : ITCONFIGURACIONES_RYDENTServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TCONFIGURACIONES_RYDENTServicios()
         {
+            
         }
 
         public async Task<int> Agregar(TCONFIGURACIONES_RYDENT tconfiguraciones_rydent)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TCONFIGURACIONES_RYDENT.Add(tconfiguraciones_rydent);
                 await _dbcontext.SaveChangesAsync();
                 return tconfiguraciones_rydent.ID;
@@ -53,7 +53,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return obj == null ? new TCONFIGURACIONES_RYDENT() : obj;
             }
         }
-       
+
         public async Task<List<TCONFIGURACIONES_RYDENT>> ConsultarTodos()
         {
             using (var _dbcontext = new AppDbContext())
@@ -87,8 +87,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
     {
         Task<int> Agregar(TCONFIGURACIONES_RYDENT tconfiguraciones_rydent);
         Task<bool> Editar(int ID, TCONFIGURACIONES_RYDENT tconfiguraciones_rydent);
-        Task<TCONFIGURACIONES_RYDENT>ConsultarPorId(int ID);
-        Task<TCONFIGURACIONES_RYDENT>ConsultarPorNombre(string NOMBRE);
+        Task<TCONFIGURACIONES_RYDENT> ConsultarPorId(int ID);
+        Task<TCONFIGURACIONES_RYDENT> ConsultarPorNombre(string NOMBRE);
         Task<List<TCONFIGURACIONES_RYDENT>> ConsultarTodos();
         Task Borrar(int ID);
     }

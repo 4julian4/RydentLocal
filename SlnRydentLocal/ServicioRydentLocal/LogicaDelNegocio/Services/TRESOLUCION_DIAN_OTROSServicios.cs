@@ -8,13 +8,15 @@ using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
-   
+
     public class TRESOLUCION_DIAN_OTROSServicios : ITRESOLUCION_DIAN_OTROSServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TRESOLUCION_DIAN_OTROSServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(TRESOLUCION_DIAN_OTROS tresolucion_dian_otros)
         {
