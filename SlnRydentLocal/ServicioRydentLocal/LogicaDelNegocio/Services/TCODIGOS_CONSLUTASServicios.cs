@@ -8,12 +8,14 @@ using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
-    internal class TCODIGOS_CONSLUTASServicios: ITCODIGOS_CONSLUTASServicios
+    internal class TCODIGOS_CONSLUTASServicios : ITCODIGOS_CONSLUTASServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TCODIGOS_CONSLUTASServicios()
         {
+            
         }
+
 
 
         public async Task<List<TCODIGOS_CONSLUTAS>> ConsultarTodos()

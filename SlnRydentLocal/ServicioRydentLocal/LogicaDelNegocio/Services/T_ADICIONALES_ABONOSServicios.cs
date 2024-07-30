@@ -8,16 +8,17 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class T_ADICIONALES_ABONOSServicios : IT_ADICIONALES_ABONOSServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public T_ADICIONALES_ABONOSServicios()
         {
+            
         }
+
 
         public async Task<T_ADICIONALES_ABONOS> Agregar(T_ADICIONALES_ABONOS t_adicionales_abonos)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.T_ADICIONALES_ABONOS.Add(t_adicionales_abonos);
                 await _dbcontext.SaveChangesAsync();
                 return t_adicionales_abonos;
@@ -29,7 +30,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.T_ADICIONALES_ABONOS.FirstOrDefaultAsync(x => x.ID == ID && x.IDENTIFICADOR == IDENTIFICADOR && x.IDDOCTOR == IDDOCTOR && x.FASE == FASE);
-                if (obj != null) 
+                if (obj != null)
                 {
                     _dbcontext.T_ADICIONALES_ABONOS.Remove(obj);
                     await _dbcontext.SaveChangesAsync();
@@ -61,46 +62,47 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 var obj = await _dbcontext.T_ADICIONALES_ABONOS.Where(x => x.TIPO == 1 && x.FECHA >= fechaInicio && x.FECHA <= fechaFin).SumAsync(x => x.VALOR);
                 return obj ?? 0;
-                
             }
+
         }
 
-        
+
 
         public async Task<RespuestasQuerysEstadoCuenta> ConsultarTotalSumaAbonosYDescuentos(int ID, int FASE, int IDDOCTOR)
         {
             using (var _dbcontext = new AppDbContext())
             {
                 var abonos = await _dbcontext.T_ADICIONALES_ABONOS
-                    .Where(aa => aa.ID == ID && aa.FASE == FASE && aa.IDDOCTOR == IDDOCTOR && aa.TIPO == 1)
-                    .SumAsync(aa => aa.VALOR);
+                  .Where(aa => aa.ID == ID && aa.FASE == FASE && aa.IDDOCTOR == IDDOCTOR && aa.TIPO == 1)
+                  .SumAsync(aa => aa.VALOR);
 
                 var descuentos = await _dbcontext.T_ADICIONALES_ABONOS
-                    .Where(aa => aa.ID == ID && aa.FASE == FASE && aa.IDDOCTOR == IDDOCTOR && aa.TIPO == 3)
-                    .SumAsync(aa => aa.VALOR);
+                   .Where(aa => aa.ID == ID && aa.FASE == FASE && aa.IDDOCTOR == IDDOCTOR && aa.TIPO == 3)
+                   .SumAsync(aa => aa.VALOR);
 
                 return new RespuestasQuerysEstadoCuenta { ABONOS = abonos, DESCUENTOS = descuentos };
             }
         }
 
-        
+
 
         public async Task<RespuestasQuerysEstadoCuenta> ConsultarValorDescuentoPorIdMaestra(int idMaestra)
         {
-            if (idMaestra <= 0)
-            {
-                return new RespuestasQuerysEstadoCuenta { VALOR = 0, DESCUENTO = 0 };
-            }
             using (var _dbcontext = new AppDbContext())
             {
+                if (idMaestra <= 0)
+                {
+                    return new RespuestasQuerysEstadoCuenta { VALOR = 0, DESCUENTO = 0 };
+                }
+
                 var query = from dt in _dbcontext.T_PRESUPUESTO
                             join pm in _dbcontext.T_PRESUPUESTOS_MAESTRA on dt.ID_MAESTRA equals pm.ID
                             where dt.ID_MAESTRA == idMaestra
                             group dt by new { pm.ID, pm.DESCUENTO_PORCENTAJE } into g
                             select new
                             {
-                                Valor =(g.Sum(x => x.COSTO ?? 0)),
-                                Descuento =((g.Key.DESCUENTO_PORCENTAJE ?? 0) * g.Sum(x => x.COSTO ?? 0)) / 100
+                                Valor = (g.Sum(x => x.COSTO ?? 0)),
+                                Descuento = ((g.Key.DESCUENTO_PORCENTAJE ?? 0) * g.Sum(x => x.COSTO ?? 0)) / 100
                             };
 
                 var result = await query.FirstOrDefaultAsync();
@@ -108,8 +110,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return result != null
                     ? new RespuestasQuerysEstadoCuenta { VALOR = result.Valor, DESCUENTO = result.Descuento }
                     : new RespuestasQuerysEstadoCuenta { VALOR = 0, DESCUENTO = 0 };
-                
             }
+
         }
 
 
@@ -132,8 +134,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var fechaMaxima = await _dbcontext.T_ADICIONALES_ABONOS
-                    .Where(a => a.ID == id && a.FASE == fase && a.TIPO == 1 && a.IDDOCTOR == idDoctor)
-                    .MaxAsync(a => (DateTime?)a.FECHA);
+                .Where(a => a.ID == id && a.FASE == fase && a.TIPO == 1 && a.IDDOCTOR == idDoctor)
+                .MaxAsync(a => (DateTime?)a.FECHA);
 
                 return fechaMaxima ?? new DateTime();
             }
@@ -150,33 +152,30 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                
-                    var resultados = await (
-                        from p in _dbcontext.T_PRESUPUESTO
-                        join d in _dbcontext.T_DEFINICION_TRATAMIENTO on p.ID_MAESTRA equals d.IDPRESUPUESTOMAESTRA
-                        join abonos in (
-                            from a in _dbcontext.T_ADICIONALES_ABONOS
-                            join dd in _dbcontext.TDATOSDOCTORES on a.RECIBIDO_POR equals dd.ID
-                            join dt in _dbcontext.T_DEFINICION_TRATAMIENTO on new { Id = a.ID, FASE = a.FASE ?? 0, IDDOCTOR = a.IDDOCTOR ?? 0 } equals new { Id = dt.ID, FASE = dt.FASE, IDDOCTOR = dt.IDDOCTOR }
-                            group a by new { dd.NOMBRE, dt.ID } into g
-                            where g.Key.ID == idanamnesis
-                            select new { Doctor = g.Key.NOMBRE, AbonosTotales = g.Sum(x => x.VALOR) ?? 0 }
-                        ) on p.DOCTOR equals abonos.Doctor into abonosGroup
-                        from abonos in abonosGroup.DefaultIfEmpty()
-                        where d.ID == idanamnesis
-                        group new { p, abonos } by new { p.DOCTOR, abonos.AbonosTotales } into g
-                        select new RespuestaSaldoPorDoctor
-                        {
-                            DOCTOR = g.Key.DOCTOR,
-                            VALOR_TOTAL = g.Sum(x => x.p.COSTO ?? 0),
-                            ABONOS = g.Key.AbonosTotales
-                        }
-                    ).ToListAsync();
+                var resultados = await (
+                from p in _dbcontext.T_PRESUPUESTO
+                join d in _dbcontext.T_DEFINICION_TRATAMIENTO on p.ID_MAESTRA equals d.IDPRESUPUESTOMAESTRA
+                join abonos in (
+                    from a in _dbcontext.T_ADICIONALES_ABONOS
+                    join dd in _dbcontext.TDATOSDOCTORES on a.RECIBIDO_POR equals dd.ID
+                    join dt in _dbcontext.T_DEFINICION_TRATAMIENTO on new { Id = a.ID, FASE = a.FASE ?? 0, IDDOCTOR = a.IDDOCTOR ?? 0 } equals new { Id = dt.ID, FASE = dt.FASE, IDDOCTOR = dt.IDDOCTOR }
+                    group a by new { dd.NOMBRE, dt.ID } into g
+                    where g.Key.ID == idanamnesis
+                    select new { Doctor = g.Key.NOMBRE, AbonosTotales = g.Sum(x => x.VALOR) ?? 0 }
+                ) on p.DOCTOR equals abonos.Doctor into abonosGroup
+                from abonos in abonosGroup.DefaultIfEmpty()
+                where d.ID == idanamnesis
+                group new { p, abonos } by new { p.DOCTOR, abonos.AbonosTotales } into g
+                select new RespuestaSaldoPorDoctor
+                {
+                    DOCTOR = g.Key.DOCTOR,
+                    VALOR_TOTAL = g.Sum(x => x.p.COSTO ?? 0),
+                    ABONOS = g.Key.AbonosTotales
+                }
+                ).ToListAsync();
 
-                    return resultados;
-                
+                return resultados;
             }
-                
         }
 
 
@@ -319,10 +318,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<bool> Editar(int ID, int IDENTIFICADOR, int IDDOCTOR, int FASE, T_ADICIONALES_ABONOS t_adicionales_abonos);
         Task<T_ADICIONALES_ABONOS> ConsultarPorId(int ID, int IDENTIFICADOR, int IDDOCTOR, int FASE);
         Task<int> ConsultarPacientesAbonaronEntreFechas(DateTime fechaInicio, DateTime fechaFin);
+        Task<decimal> ConsultarTotalAbonadoEntreFechas(DateTime fechaInicio, DateTime fechaFin);
         Task<RespuestasQuerysEstadoCuenta> ConsultarTotalSumaAbonosYDescuentos(int ID, int FASE, int IDDOCTOR);
         Task<RespuestasQuerysEstadoCuenta> ConsultarValorDescuentoPorIdMaestra(int idMaestra);
         Task<DateTime> ConsultarUltimaFechaAbono(int id, int fase, int idDoctor);
-        Task<List<RespuestaSaldoPorDoctor>> ConsultarSaldoPorDoctor (int idanamnesis);
+        Task<List<RespuestaSaldoPorDoctor>> ConsultarSaldoPorDoctor(int idanamnesis);
         Task Borrar(int ID, int IDENTIFICADOR, int IDDOCTOR, int FASE);
     }
 }

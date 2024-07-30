@@ -5,16 +5,17 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TCLAVEServicios : ITCLAVEServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TCLAVEServicios()
         {
+            
         }
+
 
         public async Task<TCLAVE> Agregar(TCLAVE tclave)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TCLAVE.Add(tclave);
                 await _dbcontext.SaveChangesAsync();
                 return tclave;
@@ -39,8 +40,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return obj == null ? new TCLAVE() : obj;
             }
         }
-
-
 
 
         public async Task<bool> Editar(string CLAVE, TCLAVE tclave)

@@ -16,5 +16,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos
         public TDETALLECITAS? detalleCitaEditar { get; set; }
         public bool esFestivo { get; set; }=false;
         public List<ConfirmacionesPedidasModel>? lstConfirmacionesPedidas { get; set; }
+        public bool terminoRefrescar { get; set; } = false;
     }
 }

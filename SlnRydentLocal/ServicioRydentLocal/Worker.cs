@@ -683,6 +683,7 @@ public class Worker : BackgroundService
                 modelo.esFestivo = false;
             }
             //-----------------------------------------------------------------------------------------------//
+            modelo.terminoRefrescar = true;
             var modeloSerializado = JsonConvert.SerializeObject(modelo);
             var modeloSerializadoComprimido = ArchivosHelper.CompressString(modeloSerializado);
             await _hubConnection.InvokeAsync("RespuestaObtenerConsultaPorDiaYPorUnidad", clientId, modeloSerializadoComprimido);
@@ -779,7 +780,7 @@ public class Worker : BackgroundService
                         if (respuesta)
                         {
                             var objCitasCanceladas = new TCITASCANCELADASServicios();
-                            var citaCancelada = new TCITASCANCELADAS() { FECHA = cancelarCita.fecha.Date, SILLA = cancelarCita.silla, HORA = cancelarCita.hora, NOMBRE = cita[0].NOMBRE, USUARIO = cancelarCita.quienLoHace };
+                            var citaCancelada = new TCITASCANCELADAS() { FECHA = cancelarCita.fecha.Date, SILLA = cancelarCita.silla, HORA = cancelarCita.hora, NOMBRE = cita[0].NOMBRE, USUARIO = cancelarCita.quienLoHace, MOTIVO_CANCELA = cancelarCita.respuesta };
                             await objCitasCanceladas.Agregar(citaCancelada);
                             var mensaje = "Cita cancelada de " + cita[0].NOMBRE + " el " + DateTime.Now.Date.ToString("dd/MM/yyyy") + " a las " + DateTime.Now.TimeOfDay.ToString() + "estaba programada para" + cita[0].FECHA + "a las" + cita[0].HORA + "en la silla" + cita[0].SILLA;
                             await objHistorial.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = cancelarCita.quienLoHace, IDANAMNESIS = objIdAnamnesis, DESCRIPCION = mensaje });
@@ -829,7 +830,7 @@ public class Worker : BackgroundService
                     
                     if (cita != null && cita.Count() > 0)
                     {
-                        cita[0].CONFIRMAR = "NO";
+                        cita[0].CONFIRMAR = "";
                         //cita[0].OBSERVACIONES = citaSinConfirmar.respuesta;
                         respuesta = await objDetallesCitasServicios.Editar(citaSinConfirmar.fecha.Date, citaSinConfirmar.silla, citaSinConfirmar.hora, cita[0]);
                     }
@@ -1127,8 +1128,14 @@ public class Worker : BackgroundService
                 await objDetalleCitasServicios.Editar(objDetalleCitasEditar.FECHA??DateTime.Today, objDetalleCitasEditar.SILLA??0, objDetalleCitasEditar.HORA??TimeSpan.Zero, objDetalleCitas);
                 var mensajeDescripcion = "Se edito la cita de " + objDetalleCitasEditar.NOMBRE + "que estaba en la silla " + objDetalleCitasEditar.SILLA + " el dia " + objDetalleCitasEditar.FECHA.Value.Date + " a las " + objDetalleCitas.HORA + " y se programo para el dia " +
                     objDetalleCitas.FECHA.Value.Date + " a las " + objDetalleCitas.HORA + "en la silla" + objDetalleCitas.SILLA;
-                var objTHistorial = new THISTORIAL() { DESCRIPCION = mensajeDescripcion, FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = objDetalleCitas.ID, IDANAMNESIS = int.Parse(objDetalleCitas.ID) };
+                var objAnamnesis = new TANAMNESISServicios();
+                var obdIdAnamnesis = await objAnamnesis.ConsultarPorIdTexto(objDetalleCitas.ID);
+                var objTHistorial = new THISTORIAL() { DESCRIPCION = mensajeDescripcion, FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = objDetalleCitas.ID, IDANAMNESIS = obdIdAnamnesis.IDANAMNESIS };
                 await objTHistorialServicios.Agregar(objTHistorial);
+                    
+                
+                
+                
                 
                 var objResp = new RespuestaConsultarPorDiaYPorUnidadModel();
                 objResp.lstConfirmacionesPedidas = new List<ConfirmacionesPedidasModel>();

@@ -12,16 +12,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TANAMNESISServicios : ITANAMNESISServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TANAMNESISServicios()
         {
+            
         }
-
         public async Task<int> Agregar(TANAMNESIS tanamnesis)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                
                 _dbcontext.TANAMNESIS.Add(tanamnesis);
                 await _dbcontext.SaveChangesAsync();
                 return tanamnesis.IDANAMNESIS;
@@ -52,13 +51,13 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TANAMNESIS
-                    .Where(x => x.FECHA_INGRESO_DATE >= fechaInicio && x.FECHA_INGRESO_DATE <= fechaFin)
-                    .Select(x => new RespuestaDatosAdministrativos.PacientesNuevos
-                    {
-                        FECHA_INGRESO_DATE = x.FECHA_INGRESO_DATE,
-                        SEXO = x.SEXO
-                    })
-                    .ToListAsync();
+                .Where(x => x.FECHA_INGRESO_DATE >= fechaInicio && x.FECHA_INGRESO_DATE <= fechaFin)
+                .Select(x => new RespuestaDatosAdministrativos.PacientesNuevos
+                {
+                    FECHA_INGRESO_DATE = x.FECHA_INGRESO_DATE,
+                    SEXO = x.SEXO
+                })
+                .ToListAsync();
 
                 return obj;
             }
@@ -113,11 +112,10 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 }
                 catch (Exception e)
                 {
-
                     throw;
                 }
-                
             }
+
         }
 
 
@@ -175,5 +173,5 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<string> BuscarNotaImportante(int IDANAMNESIS);
     }
 }
-        
+
 

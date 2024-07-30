@@ -13,14 +13,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public TFESTIVOSServicios()
         {
+
         }
+
 
         public async Task<TFESTIVOS> ConsultarPorFecha(DateTime FECHA)
         {
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TFESTIVOS.Where(x => x.FECHA.Date == FECHA.Date).ToListAsync();
-                return ! obj.Any() ? new TFESTIVOS() : obj.FirstOrDefault();
+                return !obj.Any() ? new TFESTIVOS() : obj.FirstOrDefault();
             }
         }
 

@@ -5,11 +5,15 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TDATOSCLIENTESServicios : ITDATOSCLIENTESServicios
     {
+        private readonly AppDbContext _dbcontext;
+        public TDATOSCLIENTESServicios()
+        {
+            
+        }
         public async Task<TDATOSCLIENTES> Agregar(TDATOSCLIENTES tdatosclientes)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TDATOSCLIENTES.Add(tdatosclientes);
                 await _dbcontext.SaveChangesAsync();
                 return tdatosclientes;
@@ -20,7 +24,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDATOSCLIENTES.FirstOrDefaultAsync(x => x.NOMBRE == NOMBRE);
+                var obj = await _dbcontext.TDATOSCLIENTES.FirstOrDefaultAsync(x => x.NOMBRE.ToUpper() == NOMBRE.ToUpper());
                 _dbcontext.TDATOSCLIENTES.Remove(obj);
                 await _dbcontext.SaveChangesAsync();
             }
@@ -30,7 +34,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDATOSCLIENTES.FirstOrDefaultAsync(x => x.NOMBRE == NOMBRE);
+                var obj = await _dbcontext.TDATOSCLIENTES.FirstOrDefaultAsync(x => x.NOMBRE.ToUpper() == NOMBRE.ToUpper());
                 return obj == null ? new TDATOSCLIENTES() : obj;
             }
         }
@@ -39,7 +43,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TDATOSCLIENTES.FirstOrDefaultAsync(x => x.NOMBRE == NOMBRE);
+                var obj = await _dbcontext.TDATOSCLIENTES.FirstOrDefaultAsync(x => x.NOMBRE.ToUpper() == NOMBRE.ToUpper());
                 if (obj == null)
                 {
                     return false;

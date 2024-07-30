@@ -15,8 +15,10 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public TFOTOSFRONTALESServicios()
         {
+            
         }
-       
+
+
         public async Task<TFOTOSFRONTALES> ConsultarPorId(int IDANAMNESIS)
         {
             using (var _dbcontext = new AppDbContext())

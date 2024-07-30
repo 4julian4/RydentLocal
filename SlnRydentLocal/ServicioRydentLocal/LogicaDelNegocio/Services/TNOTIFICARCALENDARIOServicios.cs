@@ -8,19 +8,20 @@ using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
-    
+
     public class TNOTIFICARCALENDARIOServicios : ITNOTIFICARCALENDARIOServicios
     {
         protected readonly AppDbContext _dbcontext;
         public TNOTIFICARCALENDARIOServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(TNOTIFICARCALENDARIO tnotificarcalendario)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TNOTIFICARCALENDARIO.Add(tnotificarcalendario);
                 await _dbcontext.SaveChangesAsync();
                 return tnotificarcalendario.ID;

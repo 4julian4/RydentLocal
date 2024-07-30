@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static ServicioRydentLocal.LogicaDelNegocio.Services.TCODIGOS_PROCEDIMIENTOSServicios;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
@@ -13,7 +14,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public TCODIGOS_PROCEDIMIENTOSServicios()
         {
+
         }
+
 
 
         public async Task<List<TCODIGOS_PROCEDIMIENTOS>> ConsultarTodos()
@@ -31,14 +34,13 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 }
                 //var obj = await _dbcontext.TCODIGOS_PROCEDIMIENTOS.ToListAsync();
                 //return obj == null ? new List<TCODIGOS_PROCEDIMIENTOS>() : obj;
+
             }
         }
 
-
-    }
-
-    public interface ITCODIGOS_PROCEDIMIENTOSServicios
-    {
-        Task<List<TCODIGOS_PROCEDIMIENTOS>> ConsultarTodos();
+        public interface ITCODIGOS_PROCEDIMIENTOSServicios
+        {
+            Task<List<TCODIGOS_PROCEDIMIENTOS>> ConsultarTodos();
+        }
     }
 }

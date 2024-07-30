@@ -8,23 +8,24 @@ using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
-    
+
     public class T_CONFIGURACION_VALORServicios : IT_CONFIGURACION_VALORServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public T_CONFIGURACION_VALORServicios()
         {
+            
         }
 
         public async Task<int> Agregar(T_CONFIGURACION_VALOR t_configuracion_valor)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.T_CONFIGURACION_VALOR.Add(t_configuracion_valor);
                 await _dbcontext.SaveChangesAsync();
                 return t_configuracion_valor.ID;
             }
+
         }
 
         public async Task Borrar(int ID)

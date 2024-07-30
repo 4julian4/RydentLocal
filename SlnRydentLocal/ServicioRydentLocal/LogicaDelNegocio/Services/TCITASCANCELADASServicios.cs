@@ -10,16 +10,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TCITASCANCELADASServicios : ITCITASCANCELADASServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TCITASCANCELADASServicios()
         {
+            
         }
 
         public async Task<TCITASCANCELADAS> Agregar(TCITASCANCELADAS tcitascanceladas)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TCITASCANCELADAS.Add(tcitascanceladas);
                 await _dbcontext.SaveChangesAsync();
                 return tcitascanceladas;

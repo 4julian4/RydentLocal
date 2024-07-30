@@ -14,8 +14,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public  TCODIGOS_EPSServicios()
         {
+            
         }
-
+        
         
         public async Task<List<TCODIGOS_EPS>> ConsultarTodos()
         {

@@ -10,16 +10,17 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class TEVOLUCIONServicios : ITEVOLUCIONServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TEVOLUCIONServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(TEVOLUCION tevolucion)
         {
             using (var _dbcontext = new AppDbContext())
             {
-                
                 try
                 {
                     int id = 0;
@@ -45,8 +46,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                     return 0;
                 }
 
-               
             }
+
         }
 
         public async Task Borrar(int IDEVOLUCION)
@@ -55,7 +56,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 var obj = await _dbcontext.TEVOLUCION.FirstOrDefaultAsync(x => x.IDEVOLUCION == IDEVOLUCION);
                 _dbcontext.TEVOLUCION.Remove(obj);
-                await _dbcontext.SaveChangesAsync();
             }
         }
 
@@ -72,7 +72,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TEVOLUCION.Where(x => x.IDEVOLUSECUND == IDEVOLUSECUND).OrderByDescending(x=>x.FECHA).ThenByDescending(x=>x.HORA).FirstOrDefaultAsync();
+                var obj = await _dbcontext.TEVOLUCION.Where(x => x.IDEVOLUSECUND == IDEVOLUSECUND).OrderByDescending(x => x.FECHA).ThenByDescending(x => x.HORA).FirstOrDefaultAsync();
                 return obj == null ? new TEVOLUCION() : obj;
             }
         }
@@ -128,6 +128,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<bool> Editar(int IDEVOLUCION, TEVOLUCION tevolucion);
         Task<TEVOLUCION> ConsultarPorIdEvolucion(int IDEVOLUCION);
         Task<List<TEVOLUCION>> ConsultarPorAnamnesis(int IDEVOLUSECUND);
+        Task<TEVOLUCION> ConsultarPorAnamnesisFechaYHora(int IDEVOLUSECUND, DateTime FECHA, TimeSpan HORA);
+        Task<TEVOLUCION> ConsultarUltimaEvolucion(int IDEVOLUSECUND);
         Task Borrar(int IDEVOLUCION);
     }
 }

@@ -13,7 +13,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public THORARIOSASUNTOSServicios()
         {
+            
         }
+
 
         public async Task<List<THORARIOSASUNTOS>> ConsultarTodos()
         {

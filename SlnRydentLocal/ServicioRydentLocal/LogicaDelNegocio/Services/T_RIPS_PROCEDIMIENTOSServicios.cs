@@ -10,20 +10,21 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 {
     public class T_RIPS_PROCEDIMIENTOSServicios : IT_RIPS_PROCEDIMIENTOSServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public T_RIPS_PROCEDIMIENTOSServicios()
         {
+            
         }
+        
 
         public async Task<bool> Agregar(T_RIPS_PROCEDIMIENTOS t_rips_procedimientos)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.T_RIPS_PROCEDIMIENTOS.Add(t_rips_procedimientos);
                 await _dbcontext.SaveChangesAsync();
                 return true;
-            }
+            } 
         }
 
 
@@ -38,7 +39,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                     _dbcontext.T_RIPS_PROCEDIMIENTOS.Remove(obj);
                     await _dbcontext.SaveChangesAsync();
                 }
-            }
+            }   
         }
 
 
@@ -48,7 +49,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 var obj = await _dbcontext.T_RIPS_PROCEDIMIENTOS.FirstOrDefaultAsync(x => x.ID == ID);
                 return obj == null ? new T_RIPS_PROCEDIMIENTOS() : obj;
-            }
+            }   
         }
 
 

@@ -7,16 +7,17 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
     public class TDATOSDOCTORESServicios : ITDATOSDOCTORESServicios
     {
-        protected readonly AppDbContext _dbcontext;
+        private readonly AppDbContext _dbcontext;
         public TDATOSDOCTORESServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(TDATOSDOCTORES tdatosdoctores)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TDATOSDOCTORES.Add(tdatosdoctores);
                 await _dbcontext.SaveChangesAsync();
                 return tdatosdoctores.ID;
@@ -41,7 +42,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return obj == null ? new TDATOSDOCTORES() : obj;
             }
         }
-        
+
         public async Task<List<TDATOSDOCTORES>> ConsultarTodos()
         {
             using (var _dbcontext = new AppDbContext())

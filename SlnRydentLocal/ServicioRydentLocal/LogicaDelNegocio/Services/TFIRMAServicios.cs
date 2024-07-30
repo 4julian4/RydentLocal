@@ -13,13 +13,14 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public TFIRMAServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(TFIRMA tfirma)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TFIRMA.Add(tfirma);
                 await _dbcontext.SaveChangesAsync();
                 return tfirma.ID;
@@ -54,7 +55,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        
+
 
         public async Task<bool> Editar(int ID, TFIRMA tfirma)
         {

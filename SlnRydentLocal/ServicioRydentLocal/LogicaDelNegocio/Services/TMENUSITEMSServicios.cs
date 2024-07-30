@@ -13,13 +13,14 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         protected readonly AppDbContext _dbcontext;
         public TMENUSITEMSServicios()
         {
+            
         }
+
 
         public async Task<int> Agregar(TMENUSITEMS tmenusitems)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TMENUSITEMS.Add(tmenusitems);
                 await _dbcontext.SaveChangesAsync();
                 return tmenusitems.ID;
@@ -64,6 +65,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                     return true;
                 }
             }
+
         }
     }
 
