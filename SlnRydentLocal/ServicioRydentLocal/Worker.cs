@@ -25,8 +25,9 @@ public class Worker : BackgroundService
     private readonly IConfiguration _configuration;
 
     // private readonly AppDbContext _dbContext;
-
     
+    private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1); //esto es reciente 16/08/24
+
 
 
 
@@ -38,7 +39,59 @@ public class Worker : BackgroundService
         _scopeFactory = scopeFactory;
         _configuration = configuration;
         string url = _configuration.GetValue<string>("signalRServer:url");
-        _hubConnection = new HubConnectionBuilder().WithUrl(url).Build();
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(url)
+            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1) })
+            .Build();
+
+        _hubConnection.Reconnecting += error =>
+        {
+            _logger.LogWarning($"Reconnecting due to: {error?.Message}");  // Log de advertencia cuando se intenta reconectar
+            return Task.CompletedTask;
+        };
+
+        _hubConnection.Reconnected += connectionId =>
+        {
+            _logger.LogInformation($"Reconnected. Connection ID: {connectionId}");  // Log de información cuando la reconexión es exitosa
+            return Task.CompletedTask;
+        };
+
+        _hubConnection.Closed += async error =>
+        {
+            _logger.LogError($"Connection closed due to: {error?.Message}");  // Log de error cuando la conexión se cierra
+            await Task.Delay(TimeSpan.FromSeconds(15));  // Espera 15 segundos antes de intentar reconectar
+            await StartConnectionAsync();  // Intenta reconectar
+        };
+    }
+
+    // Método para iniciar la conexión a SignalR
+    private async Task StartConnectionAsync()
+    {
+        await _connectionLock.WaitAsync(); // Acquire lock
+        try
+        {
+            if (_hubConnection.State == HubConnectionState.Disconnected)
+            {
+                while (true)
+                {
+                    try
+                    {
+                        await _hubConnection.StartAsync();
+                        _logger.LogInformation("Connected to SignalR hub.");
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error connecting to SignalR hub: {ex.Message}. Retrying in 15 seconds...");
+                        await Task.Delay(TimeSpan.FromSeconds(15));
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _connectionLock.Release(); // Release lock
+        }
     }
 
     private async Task registrarSuscripciones()
@@ -133,59 +186,98 @@ public class Worker : BackgroundService
     //2. Recibir el pin de acceso de Rydent se usa el evento _hubConnection.On<string, string>("ObtenerPin"
     //3. Autenticar el pin de acceso de Rydent se usando await RecibirPinRydent(pin, clientId);
     //4. Enviar el pin de acceso de Rydent al servidor de Rydent
-    public async Task ConnectToServer(bool primerIntento) //conectamos al servidor de SR y registramos el equipo
+    // Método para conectar al servidor y registrar el equipo
+    public async Task ConnectToServer(IServiceProvider serviceProvider)
     {
-        //_hubConnection.On<string,string>("ReceiveMessage",(user, message) =>
-        //{
-        //    Console.WriteLine($"Usuario Recibido: {user}");
-        //    Console.WriteLine($"Received message: {System.Environment.MachineName}");
-        //    Console.WriteLine($"Received message: {message}");
-        //});
+        try
+        {
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
+                var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(System.Environment.MachineName);
 
-        //Cuando el servidor de SR nos envie un mensaje ObtenerPin a nivel local validamos por medio de RecibirPinRydent
-        //el pin de acceso de Rydent si exiiste invocamos la funcion RespuestaObtenerPin que esta en el servidor de SR
-        
-        
-        await _hubConnection.StartAsync();
-        // aca estamos invocando una funcion que tenemos en el servidor signalR llamada RegistrarEquipo
-        // y le pasamos el id de la conexion al siganlR el cual fue asignado por el servidor signalR
-        // y el id encriptado del disco duro del equipo que esta corriendo el worker
-        var datosClientes = await new TDATOSCLIENTESServicios().ConsultarPorId(System.Environment.MachineName);
-        await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, datosClientes.ENTRADA);
+                if (_hubConnection.State == HubConnectionState.Connected)
+                {
+                    await RegisterDeviceAsync(datosClientes.ENTRADA);
+                }
+                else
+                {
+                    _logger.LogWarning("No se pudo registrar el equipo porque la conexión a SignalR no está establecida.");
+                    await AttemptReconnectAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error durante la conexión al servidor: {ex.Message}", ex);
+        }
     }
-    
 
+    private async Task RegisterDeviceAsync(string entrada)
+    {
+        try
+        {
+            if (_hubConnection.State == HubConnectionState.Connected)
+            {
+                await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
+                _logger.LogInformation("Equipo registrado con éxito.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error al registrar el equipo: {ex.Message}", ex);
+        }
+    }
+
+    private async Task AttemptReconnectAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Intentando reconectar a SignalR...");
+            await _hubConnection.StartAsync();
+            _logger.LogInformation("Reconexión exitosa.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error durante la reconexión a SignalR: {ex.Message}", ex);
+        }
+    }
+
+
+    // Método principal que se ejecuta en segundo plano
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        bool primerIntento = true;
+        await StartConnectionAsync();
         await registrarSuscripciones();
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            _logger.LogInformation("Iniciando la consulta a la tabla ");
+            _logger.LogInformation("Iniciando la consulta a la tabla");
 
             try
             {
                 using (var scope = _scopeFactory.CreateScope())
                 {
-                   
                     if (_hubConnection.State != HubConnectionState.Connected)
                     {
-                        await ConnectToServer(primerIntento);
-                        
-                        primerIntento = false;
-                        
+                        await StartConnectionAsync();  // Intenta reconectar si la conexión está caída
                     }
+
+                    await ConnectToServer(scope.ServiceProvider);  // Conecta al servidor y registra el equipo
+
                     _logger.LogInformation("Consulta completada correctamente.");
                 }
                 await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
             }
-
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Operación cancelada.");
+            }
             catch (Exception ex)
             {
                 _logger.LogError($"Error durante la ejecución: {ex.Message}");
             }
         }
-       // await ConnectToServer();
     }
 
 
@@ -209,40 +301,46 @@ public class Worker : BackgroundService
         var objTAnamnesisParaAgendayBuscadores = new TANAMNESISServicios();
         respuestaPin.clave = await objPINACCESO.ConsultarPorId(pinacceso);
         //esto se hace para evitar enviar la clave en el objeto respuestaPin el cual quedaria expuesto en el navegador web
-        if (respuestaPin.clave != null)
+        if (respuestaPin.clave.CLAVE != null)
         {
             respuestaPin.clave.CLAVE = "";
-        }   
-        var listDoctores =  await objDOCTORES.ConsultarTodos();
-        var listEps = await objEPS.ConsultarTodos();
-        var listProcedimientos = await objPROCEDIMIENTOS.ConsultarTodos();
-        var listConsultas = await objCONSULTAS.ConsultarTodos();
-        var listDepartamentos = await objDepartamentos.ConsultarTodos();
-        var listCiudades = await objCiudades.ConsultarTodos();
-        var lstFrasesXEvolucion = await objFrasesXEvolucion.ConsultarTodos();
-        var listHorariosAgenda = await objHorariosAgenda.ConsultarTodos();
-        var listHorariosAsuntos = await objHorariosAsuntos.ConsultarTodos();
-        var listFestivos = await objFestivos.ConsultarTodos();
-        var listConfiguracionesRydent = await objConfiguracionesRydent.ConsultarTodos();
-        var listAnamnesisParaAgendayBuscadores = await objTAnamnesisParaAgendayBuscadores.ConsultarDatosPacientesParaCargarEnAgenda();
-        if (listDoctores != null && listDoctores.Count() > 0) 
-        {
-            respuestaPin.lstEps = listEps;
-            respuestaPin.lstProcedimientos = listProcedimientos;
-            respuestaPin.lstConsultas = listConsultas; 
-            respuestaPin.lstDepartamentos = listDepartamentos;
-            respuestaPin.lstCiudades = listCiudades;
-            respuestaPin.lstDoctores = listDoctores.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
-            respuestaPin.lstFrasesXEvolucion = lstFrasesXEvolucion;
-            respuestaPin.lstHorariosAgenda = listHorariosAgenda;
-            respuestaPin.lstHorariosAsuntos = listHorariosAsuntos;
-            respuestaPin.lstFestivos = listFestivos;
-            respuestaPin.lstConfiguracionesRydent=listConfiguracionesRydent;
-            if (listAnamnesisParaAgendayBuscadores != null && listAnamnesisParaAgendayBuscadores.Count() > 0)
+            respuestaPin.acceso = true;
+            var listDoctores = await objDOCTORES.ConsultarTodos();
+            var listEps = await objEPS.ConsultarTodos();
+            var listProcedimientos = await objPROCEDIMIENTOS.ConsultarTodos();
+            var listConsultas = await objCONSULTAS.ConsultarTodos();
+            var listDepartamentos = await objDepartamentos.ConsultarTodos();
+            var listCiudades = await objCiudades.ConsultarTodos();
+            var lstFrasesXEvolucion = await objFrasesXEvolucion.ConsultarTodos();
+            var listHorariosAgenda = await objHorariosAgenda.ConsultarTodos();
+            var listHorariosAsuntos = await objHorariosAsuntos.ConsultarTodos();
+            var listFestivos = await objFestivos.ConsultarTodos();
+            var listConfiguracionesRydent = await objConfiguracionesRydent.ConsultarTodos();
+            var listAnamnesisParaAgendayBuscadores = await objTAnamnesisParaAgendayBuscadores.ConsultarDatosPacientesParaCargarEnAgenda();
+            if (listDoctores != null && listDoctores.Count() > 0)
             {
-                respuestaPin.lstAnamnesisParaAgendayBuscadores = listAnamnesisParaAgendayBuscadores;
+                respuestaPin.lstEps = listEps;
+                respuestaPin.lstProcedimientos = listProcedimientos;
+                respuestaPin.lstConsultas = listConsultas;
+                respuestaPin.lstDepartamentos = listDepartamentos;
+                respuestaPin.lstCiudades = listCiudades;
+                respuestaPin.lstDoctores = listDoctores.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
+                respuestaPin.lstFrasesXEvolucion = lstFrasesXEvolucion;
+                respuestaPin.lstHorariosAgenda = listHorariosAgenda;
+                respuestaPin.lstHorariosAsuntos = listHorariosAsuntos;
+                respuestaPin.lstFestivos = listFestivos;
+                respuestaPin.lstConfiguracionesRydent = listConfiguracionesRydent;
+                if (listAnamnesisParaAgendayBuscadores != null && listAnamnesisParaAgendayBuscadores.Count() > 0)
+                {
+                    respuestaPin.lstAnamnesisParaAgendayBuscadores = listAnamnesisParaAgendayBuscadores;
+                }
             }
         }
+        else
+        {
+            respuestaPin.acceso = false;
+        }   
+        
         try
         {
             var s = JsonConvert.SerializeObject(respuestaPin);
@@ -780,7 +878,7 @@ public class Worker : BackgroundService
                         if (respuesta)
                         {
                             var objCitasCanceladas = new TCITASCANCELADASServicios();
-                            var citaCancelada = new TCITASCANCELADAS() { FECHA = cancelarCita.fecha.Date, SILLA = cancelarCita.silla, HORA = cancelarCita.hora, NOMBRE = cita[0].NOMBRE, USUARIO = cancelarCita.quienLoHace, MOTIVO_CANCELA = cancelarCita.respuesta };
+                            var citaCancelada = new TCITASCANCELADAS() { FECHA = cancelarCita.fecha.Date, SILLA = cancelarCita.silla, HORA = cancelarCita.hora, NOMBRE = cita[0].NOMBRE, USUARIO = cancelarCita.quienLoHace, MOTIVO_CANCELA = cancelarCita.mensaje };
                             await objCitasCanceladas.Agregar(citaCancelada);
                             var mensaje = "Cita cancelada de " + cita[0].NOMBRE + " el " + DateTime.Now.Date.ToString("dd/MM/yyyy") + " a las " + DateTime.Now.TimeOfDay.ToString() + "estaba programada para" + cita[0].FECHA + "a las" + cita[0].HORA + "en la silla" + cita[0].SILLA;
                             await objHistorial.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = cancelarCita.quienLoHace, IDANAMNESIS = objIdAnamnesis, DESCRIPCION = mensaje });
