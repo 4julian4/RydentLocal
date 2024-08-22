@@ -16,10 +16,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
         private readonly IMapper _mapper;
         private readonly AppDbContext _dbcontext;
         
-        public AntecedentesServicios(AppDbContext dbcontext)
-        {
-            _dbcontext = dbcontext;
-        }
         public AntecedentesServicios()
         {
             var mapperConfig = new MapperConfiguration(cfg =>
@@ -33,28 +29,30 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
 
         public async Task<Antecedentes> ConsultarPorId(int IDANAMNESIS)
         {
-            
-            var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
-            var antecedentes = _mapper.Map<Antecedentes>(obj);
-            return antecedentes ?? new Antecedentes();
-            
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
+                var antecedentes = _mapper.Map<Antecedentes>(obj);
+                return antecedentes ?? new Antecedentes();
+            }
         }
 
         public async Task<bool> Editar(int IDANAMNESIS, Antecedentes antecedentes)
         {
-            
-            var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
-            if (obj == null)
+            using (var _dbcontext = new AppDbContext())
             {
-                return false;
+                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
+                if (obj == null)
+                {
+                    return false;
+                }
+                else
+                {
+                    _dbcontext.Entry(obj).CurrentValues.SetValues(antecedentes);
+                    await _dbcontext.SaveChangesAsync();
+                    return true;
+                }
             }
-            else
-            {
-                _dbcontext.Entry(obj).CurrentValues.SetValues(antecedentes);
-                await _dbcontext.SaveChangesAsync();
-                return true;
-            }
-            
         }
     }
 

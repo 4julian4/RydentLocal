@@ -22,6 +22,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos
         public List<TFESTIVOS> lstFestivos { set; get; } = new List<TFESTIVOS>();
         public List<TCONFIGURACIONES_RYDENT> lstConfiguracionesRydent { set; get; } = new List<TCONFIGURACIONES_RYDENT>();
         public List<TANAMNESIS>? lstAnamnesisParaAgendayBuscadores { set; get; }
+        public bool? acceso { set; get; }
 
 
     }

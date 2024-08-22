@@ -15,5 +15,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos
         public bool aceptado { get; set; }
         public string respuesta { get; set; }
         public string quienLoHace { get; set; }
+        public string mensaje { get; set; }
     }
 }
