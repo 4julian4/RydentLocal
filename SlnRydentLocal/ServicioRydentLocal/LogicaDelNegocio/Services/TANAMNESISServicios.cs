@@ -125,8 +125,17 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 BUSCAR = BUSCAR.Trim().Replace("  ", " ").Replace(" ", "%").ToUpper();
-                var obj = await _dbcontext.P_BUSCARPACIENTE(TIPO, BUSCAR);
-                return obj == null ? new List<P_BUSCARPACIENTE>() : obj;
+                try
+                {
+                    var obj = await _dbcontext.P_BUSCARPACIENTE(TIPO, BUSCAR);
+                    return obj == null ? new List<P_BUSCARPACIENTE>() : obj;
+                }
+                catch (Exception e)
+                {
+                    throw;
+                }
+                //var obj = await _dbcontext.P_BUSCARPACIENTE(TIPO, BUSCAR);
+                //return obj == null ? new List<P_BUSCARPACIENTE>() : obj;
             }
         }
 
