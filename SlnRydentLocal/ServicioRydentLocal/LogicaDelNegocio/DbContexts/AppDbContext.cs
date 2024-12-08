@@ -1,5 +1,6 @@
 ﻿using FirebirdSql.Data.FirebirdClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.Configuration;
 //using RydentDatos.RydentDB;
 
@@ -11,11 +12,10 @@ using ServicioRydentLocal.LogicaDelNegocio.Modelos;
 using System.Collections.Generic;
 using System.Data;
 using System.Numerics;
+using System.Text;
 
 public class AppDbContext : DbContext
 {
-      
-
     public DbSet<TANAMNESIS> TANAMNESIS { get; set; }
     public DbSet<TCITAS> TCITAS { get; set; }
     public DbSet<TDETALLECITAS> TDETALLECITAS { get; set; }
@@ -178,6 +178,10 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        var isoConverter = new ValueConverter<string, string>(
+            v => ConvertToISO8859_1(v),
+            v => ConvertFromISO8859_1(v));
+
         modelBuilder.Entity<THISTORIAL>()
             .HasKey(c => new { c.FECHA, c.HORA });
         modelBuilder.Entity<TCITASCANCELADAS>()
@@ -190,6 +194,9 @@ public class AppDbContext : DbContext
             .HasKey(c => new { c.SILLA, c.FECHA });
         modelBuilder.Entity<TDETALLECITAS>()
             .HasKey(c => new { c.SILLA, c.FECHA, c.HORA });
+        modelBuilder.Entity<TDETALLECITAS>()
+            .Property(e => e.NOMBRE)
+            .HasConversion(isoConverter);
         modelBuilder.Entity<TCITASBORRADAS>()
             .HasKey(c => new { c.SILLA, c.FECHA, c.HORA });
         modelBuilder.Entity<TTRATAMIENTO>()
@@ -217,7 +224,21 @@ public class AppDbContext : DbContext
     }
 
 
+    private static string ConvertToISO8859_1(string input)
+    {
+        if (input == null) return null;
+        var utfBytes = Encoding.UTF8.GetBytes(input); // Convert to bytes in UTF-8
+        var isoBytes = Encoding.Convert(Encoding.UTF8, Encoding.GetEncoding("ISO-8859-1"), utfBytes); // Convert those bytes to ISO-8859-1
+        return Encoding.GetEncoding("ISO-8859-1").GetString(isoBytes); // Convert back to a string in ISO-8859-1
+    }
 
+    private static string ConvertFromISO8859_1(string input)
+    {
+        if (input == null) return null;
+        var isoBytes = Encoding.GetEncoding("ISO-8859-1").GetBytes(input); // Convert to bytes in ISO-8859-1
+        var utfBytes = Encoding.Convert(Encoding.GetEncoding("ISO-8859-1"), Encoding.UTF8, isoBytes); // Convert those bytes to UTF-8
+        return Encoding.UTF8.GetString(utfBytes); // Convert back to a string in UTF-8
+    }
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         var configuration = new ConfigurationBuilder()
@@ -227,4 +248,5 @@ public class AppDbContext : DbContext
         var strConn=configuration.GetValue<string>("ConnectionStrings:FirebirdConnection") ??"";
         optionsBuilder.UseFirebird(strConn);
     }
+
 }

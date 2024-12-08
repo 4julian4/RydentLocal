@@ -15,6 +15,7 @@ using SixLabors.ImageSharp;
 using System.Data;
 using System.Globalization;
 using System.Security.Principal;
+using System.Text.RegularExpressions;
 using static System.Net.Mime.MediaTypeNames;
 
 public class Worker : BackgroundService
@@ -67,33 +68,21 @@ public class Worker : BackgroundService
     // Método para iniciar la conexión a SignalR
     private async Task StartConnectionAsync()
     {
-        await _connectionLock.WaitAsync(); // Acquire lock
-        try
+        if (_hubConnection.State == HubConnectionState.Disconnected)
         {
-            if (_hubConnection.State == HubConnectionState.Disconnected)
+            try
             {
-                while (true)
-                {
-                    try
-                    {
-                        await _hubConnection.StartAsync();
-                        _logger.LogInformation("Connected to SignalR hub.");
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"Error connecting to SignalR hub: {ex.Message}. Retrying in 15 seconds...");
-                        await Task.Delay(TimeSpan.FromSeconds(15));
-                    }
-                }
+                await _hubConnection.StartAsync();
+                _logger.LogInformation("Connected to SignalR hub.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error connecting to SignalR hub: {ex.Message}");
+                await Task.Delay(TimeSpan.FromSeconds(15));
             }
         }
-        finally
-        {
-            _connectionLock.Release(); // Release lock
-        }
     }
-
+   
     private async Task registrarSuscripciones()
     {
         _hubConnection.On<string, string>("ObtenerPin", async (clientId, pin) =>
@@ -267,7 +256,7 @@ public class Worker : BackgroundService
 
                     _logger.LogInformation("Consulta completada correctamente.");
                 }
-                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+                await Task.Delay(TimeSpan.FromMinutes(3), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -1040,11 +1029,142 @@ public class Worker : BackgroundService
                     }
                 }
             }
+            
+
+
+            else if (objDatosRealizarAccionCitaAgendada.Any(x => x.tipoAccion == "RECORDARCITA"))
+            {
+                var enviarMensajeRecordarCita = objDatosRealizarAccionCitaAgendada.First(x => x.tipoAccion == "RECORDARCITA");
+
+                if (enviarMensajeRecordarCita.aceptado)
+                {
+                    var servicioWhatsApp = new WhatsAppService();
+
+                    try
+                    {
+                        // Consultar las citas de forma asíncrona
+                        var listadoCitasParaEnviarMensaje = await objDetallesCitasServicios
+                            .ConsultarPorFechaySilla(enviarMensajeRecordarCita.fecha.Date, enviarMensajeRecordarCita.silla);
+
+                        if (listadoCitasParaEnviarMensaje == null || !listadoCitasParaEnviarMensaje.Any())
+                        {
+                            Console.WriteLine("No hay citas para enviar recordatorios.");
+                            return;
+                        }
+
+                        // Recorrer cada cita secuencialmente
+                        for (int i = 0; i < listadoCitasParaEnviarMensaje.Count; i++)
+                        {
+                            var cita = listadoCitasParaEnviarMensaje[i];
+
+                            // Validar si ya se envió el mensaje (COLOR ya es "VERDE")
+                            if (cita.CEDULA == "SI")
+                            {
+                                Console.WriteLine($"Mensaje ya enviado para la cita con ID: {cita.ID}. Se omite el envío.");
+                                continue; // Pasar a la siguiente cita
+                            }
+
+                            var haciaNumero = ValidarYAgregarPrefijo(cita.TELEFONO);
+                            if (string.IsNullOrWhiteSpace(haciaNumero))
+                            {
+                                haciaNumero = ValidarYAgregarPrefijo(cita.CELULAR);
+                            }
+
+                            var templateNombre = "mi_plantilla";
+                            var parametros = new List<string>
+                            {
+                                cita.NOMBRE,
+                                cita.FECHA?.ToString("dd/MM/yyyy"), // Formato día/mes/año
+                                cita.HORA?.ToString(@"hh\:mm")      // Formato de hora "hh:mm"
+                            };
+
+                            if (!string.IsNullOrWhiteSpace(haciaNumero))
+                            {
+                                var resultado = await servicioWhatsApp.EnviarMensaje(haciaNumero, templateNombre, parametros);
+
+                                if (!resultado)
+                                {
+                                    Console.WriteLine($"Error al enviar el mensaje para la cita con ID: {cita.ID}");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"Mensaje enviado correctamente a {cita.NOMBRE}.");
+
+                                    // Actualizar el campo COLOR a "VERDE"
+                                    var respuestaEdicion = await objDetallesCitasServicios.ActualizarCampo(
+                                        cita.FECHA.Value.Date,
+                                        cita.SILLA ?? 0,
+                                        cita.HORA.Value,
+                                        "SI"
+                                    );
+
+                                    if (!respuestaEdicion)
+                                    {
+                                        Console.WriteLine($"Error al actualizar el color de la cita con ID: {cita.ID}");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine($"Datos incompletos para enviar mensaje a {cita.NOMBRE}.");
+                            }
+                        }
+
+                        respuesta = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error al procesar los mensajes: {ex.Message}");
+                        respuesta = false;
+                    }
+                }
+            }
+
         }
         var respuestaSerializada = JsonConvert.SerializeObject(respuesta);
         var respuestaSerializadaComprimida = ArchivosHelper.CompressString(respuestaSerializada);
         await _hubConnection.InvokeAsync("RespuestaRealizarAccionesEnCitaAgendada", clientId, respuestaSerializadaComprimida);
     }
+
+
+
+    public static string ValidarYAgregarPrefijo(string numero)
+    {
+        // Define la expresión regular para números celulares válidos en Colombia (10 dígitos y empiezan con 3)
+        var regex = new Regex(@"^3\d{9}$");
+
+        // Remueve espacios o caracteres adicionales
+        numero = numero.Trim().Replace(" ", "").Replace("-", "");
+
+        // Caso 1: Si ya tiene el prefijo +57
+        if (numero.StartsWith("+57"))
+        {
+            // Verifica que el resto del número sea válido
+            var numeroSinPrefijo = numero.Substring(3); // Remueve +57
+            return regex.IsMatch(numeroSinPrefijo) ? numero : null;
+        }
+        // Caso 2: Si empieza con 57 pero no tiene el "+"
+        else if (numero.StartsWith("57"))
+        {
+            var numeroSinPrefijo = numero.Substring(2); // Remueve 57
+            if (regex.IsMatch(numeroSinPrefijo))
+            {
+                // Agrega el prefijo "+" si es válido
+                return $"+{numero}";
+            }
+        }
+        // Caso 3: Número sin prefijo 57
+        else if (regex.IsMatch(numero))
+        {
+            // Agrega el prefijo +57 si es válido
+            return $"+57{numero}";
+        }
+
+        // Si no es válido, retorna null
+        return null;
+    }
+
+
 
     public async Task ObtenerValidacionesAgenda(string clientId, string datosAgenda)
     {
@@ -1126,16 +1246,20 @@ public class Worker : BackgroundService
                             var resultadoEditar =  resultado?.Where(x =>x.FECHA != fecha && x.HORA != horaEditar);
                         }
                     }
-                    if (resultado != null)
+                    else//se agrego esto porque siempre asi se estyuviera editando se iba a la validacion de si el paciente tenia cita repetida
                     {
-                        lstRespuestaConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel()
+                        if (resultado != null && resultado.Count > 0)
                         {
-                            mensaje = "El paciente ya tiene cita asignada el dia a la hora desea continuar asignando ésta cita?",
-                            nombreConfirmacion = "CITA_REPETIDA",
-                            pedirConfirmar = true,
-                            esMensajeRestrictivo = false
-                        });
+                            lstRespuestaConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel()
+                            {
+                                mensaje = "El paciente ya tiene cita asignada el dia "+ fecha.Value.Date.ToString("dd/MM/yyyy") + " desea continuar asignando ésta cita?",
+                                nombreConfirmacion = "CITA_REPETIDA",
+                                pedirConfirmar = true,
+                                esMensajeRestrictivo = false
+                            });
+                        }
                     }
+                    
                 }
                 if (!editar)
                 {
@@ -1179,9 +1303,12 @@ public class Worker : BackgroundService
                     else
                     {
                         await GuardarDatosAgenda(clientId, objAgenda);
+                       
                     }
+
                 }
             }
+            
             else
             {
                 if (editar)
@@ -1203,6 +1330,8 @@ public class Worker : BackgroundService
         
     }
 
+    
+
     public async Task EditarDatosAgenda(string clientId, RespuestaConsultarPorDiaYPorUnidadModel objAgenda)
     {
         try
@@ -1212,6 +1341,7 @@ public class Worker : BackgroundService
             var objDetalleCitasServicios = new TDETALLECITASServicios();
             var objDetalleCitasEditar = objAgenda.detalleCitaEditar;
             var objDetalleCitas= objAgenda.lstDetallaCitas[0];
+            
             if (objDetalleCitasEditar.SILLA != null && objDetalleCitasEditar.FECHA != null && objDetalleCitasEditar.HORA != null)
             {
                 var existeAgenda = await objTCitasServicios.ConsultarPorId(objDetalleCitas.SILLA ?? 0, objDetalleCitas.FECHA ?? DateTime.MinValue);
@@ -1250,6 +1380,8 @@ public class Worker : BackgroundService
         }
     }
 
+    
+
     public async Task GuardarDatosAgenda(string clientId, RespuestaConsultarPorDiaYPorUnidadModel objAgenda)
     {
         try
@@ -1263,7 +1395,10 @@ public class Worker : BackgroundService
             }
             
             var objDetalleCitas = objAgenda.lstDetallaCitas[0];
-            
+            //objDetalleCitas.NOMBRE = ConvertToISO8859_1(objDetalleCitas.NOMBRE);
+            //objDetalleCitas.DOCTOR = ConvertToISO8859_1(objDetalleCitas.DOCTOR);
+            //objDetalleCitas.ASUNTO = ConvertToISO8859_1(objDetalleCitas.ASUNTO);
+
             //-----------------Aca deben ir validaciones----------------------//
             if (objDetalleCitas.SILLA != null && objDetalleCitas.FECHA != null)
             {
@@ -1296,7 +1431,43 @@ public class Worker : BackgroundService
                     //Console.WriteLine(formattedNumber); // Salida: 1235
                     objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "El paciente tiene una mora de " + objMora.MORA?.ToString("N0", new CultureInfo("es-ES")), nombreConfirmacion = "MORA", pedirConfirmar = false, esMensajeRestrictivo = false });
                 }
-                objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "Cita guardada correctamente", nombreConfirmacion = "CITA_GUARDADA", pedirConfirmar = false, esMensajeRestrictivo = false }); 
+                objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "Cita guardada correctamente", nombreConfirmacion = "CITA_GUARDADA", pedirConfirmar = false, esMensajeRestrictivo = false });
+                
+                //---------------------enviamos mensaje-------------------------------------------------//
+                //Enviar mensaje cita ha sido asignada para el dia a la hora
+                var servicioWhatsApp = new WhatsAppService();
+                var haciaNumero = ValidarYAgregarPrefijo(objAgenda.lstDetallaCitas[0].TELEFONO);
+                if (string.IsNullOrWhiteSpace(haciaNumero))
+                {
+                    haciaNumero = ValidarYAgregarPrefijo(objAgenda.lstDetallaCitas[0].CELULAR);
+                }
+
+                var templateNombre = "mi_plantilla";
+                var parametros = new List<string>
+                {
+                    objAgenda.lstDetallaCitas[0].NOMBRE,
+                    objAgenda.lstDetallaCitas[0].FECHA?.ToString("dd/MM/yyyy"), // Formato día/mes/año
+                    objAgenda.lstDetallaCitas[0].HORA?.ToString(@"hh\:mm")      // Formato de hora "hh:mm"
+                };
+
+                if (!string.IsNullOrWhiteSpace(haciaNumero))
+                {
+                    var resultado = await servicioWhatsApp.EnviarMensajeCitaAgenda(haciaNumero, templateNombre, parametros);
+
+                    if (!resultado)
+                    {
+                        Console.WriteLine($"Error al enviar el mensaje para la cita con ID: {objAgenda.lstDetallaCitas[0].ID}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Mensaje enviado correctamente a {objAgenda.lstDetallaCitas[0].NOMBRE}.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Datos incompletos para enviar mensaje a {objAgenda.lstDetallaCitas[0].NOMBRE}.");
+                }
+                //--------------------------------------------------------------------------------------//
                 var objRespSerializado = JsonConvert.SerializeObject(objResp);
                 var objRespSerializadoComprimido = ArchivosHelper.CompressString(objRespSerializado);
                 await _hubConnection.InvokeAsync("RespuestaAgendarCita", clientId, objRespSerializadoComprimido);

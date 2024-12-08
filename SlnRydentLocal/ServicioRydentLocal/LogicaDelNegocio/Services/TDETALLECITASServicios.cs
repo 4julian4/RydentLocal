@@ -16,18 +16,19 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
         }
 
-        
+              
         public async Task<TDETALLECITAS> Agregar(TDETALLECITAS tdetallecitas)
         {
             using (var _dbcontext = new AppDbContext())
             {
-
                 _dbcontext.TDETALLECITAS.Add(tdetallecitas);
                 await _dbcontext.SaveChangesAsync();
                 return tdetallecitas;
             }
 
         }
+
+
 
         public async Task<bool> Borrar(DateTime FECHA, int SILLA, TimeSpan HORA)
         {
@@ -61,7 +62,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TDETALLECITAS
-                .Where(x => EF.Functions.Like(x.NOMBRE, $"%{Tipo}%") || EF.Functions.Like(x.ID, $"%{Tipo}%") || EF.Functions.Like(x.TELEFONO, $"%{Tipo}%"))
+                .Where(x => EF.Functions.Like(x.NOMBRE, $"%{Tipo.Replace(" ", "%")}%") || EF.Functions.Like(x.ID, $"%{Tipo}%") || EF.Functions.Like(x.TELEFONO, $"%{Tipo}%"))
                 .Where(x => x.FECHA >= fecha.Date)
                 .OrderBy(x => x.FECHA)
                 .ThenBy(x => x.HORA)
@@ -135,6 +136,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
+
                 var obj = await _dbcontext.TDETALLECITAS.Where(x => x.FECHA == FECHA && x.SILLA == SILLA).ToListAsync();
                 return obj == null ? new List<TDETALLECITAS>() : obj;
             }
@@ -200,12 +202,44 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 }
             }
         }
+
+        public async Task<bool> ActualizarCampo(DateTime FECHA, int SILLA, TimeSpan HORA, string citaRecordada)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                // Buscar la cita existente
+                var obj = await _dbcontext.TDETALLECITAS
+                    .FirstOrDefaultAsync(x => x.FECHA == FECHA.Date && x.HORA == HORA && x.SILLA == SILLA);
+                if (obj == null)
+                {
+                    return false; // No se encontró la cita
+                }
+
+                try
+                {
+                    // Actualizar solo el campo CEDULA
+                    obj.CEDULA = citaRecordada;
+
+                    // Guardar cambios en la base de datos
+                    _dbcontext.TDETALLECITAS.Update(obj);
+                    await _dbcontext.SaveChangesAsync();
+
+                    return true;
+                }
+                catch (Exception)
+                {
+                    return false; // Manejar errores
+                }
+            }
+        }
+
     }
 
     public interface ITDETALLECITASServicios
     {
         Task<TDETALLECITAS> Agregar(TDETALLECITAS tdetallecitas);
         Task<bool> Editar(DateTime FECHA, int SILLA, TimeSpan HORA, TDETALLECITAS tdetallecitas);
+        Task<bool> ActualizarCampo(DateTime FECHA, int SILLA, TimeSpan HORA, string nuevoColor);
         Task<TDETALLECITAS> ConsultarPorId(DateTime FECHA, int SILLA, TimeSpan HORA);
         Task<TDETALLECITAS> ConsultarPorIdDetalleCitas(string ID);
         Task<List<TDETALLECITAS>> ConsultarCitasDePacientePorTipo(string Tipo, DateTime fecha);

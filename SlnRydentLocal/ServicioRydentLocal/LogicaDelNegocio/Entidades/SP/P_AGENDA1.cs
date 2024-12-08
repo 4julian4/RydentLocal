@@ -41,6 +41,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.SP
         public string? OUT_COLOR { set; get; }
         public string? OUT_ALARMAR { set; get; }
         public string? OUT_ANESTECIA { set; get; }
+        public string? OUT_CEDULA { set; get; }
         public string? OUT_REFERIDO_POR { set; get; }
         public string? OUT_E_MAIL_RESP { set; get; }
         public string? OUT_CONVENIO { set; get; }
