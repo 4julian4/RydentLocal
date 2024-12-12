@@ -822,6 +822,7 @@ public class Worker : BackgroundService
     {
         var objHistorial = new THISTORIALServicios();
         var objDetallesCitasServicios = new TDETALLECITASServicios();
+        var objFrasesParaAgendar = new T_FRASE_XEVOLUCIONServicios();
         var respuesta = false;
         var settings = new JsonSerializerSettings();
         settings.Converters.Add(new TimeSpanConverter());
@@ -1070,12 +1071,24 @@ public class Worker : BackgroundService
                                 haciaNumero = ValidarYAgregarPrefijo(cita.CELULAR);
                             }
 
-                            var templateNombre = "mi_plantilla";
+                            var fraseRecordatorio = await objFrasesParaAgendar.ConsultarPorTipo(5);
+                            var templateNombre  = "";
+
+                            if (fraseRecordatorio != null)
+                            {
+                                templateNombre = fraseRecordatorio.CONTENIDO; 
+                            }
+                            else
+                            {
+                                templateNombre = "Hola {0}, te recordamos que tu cita está agendada para el dia {1} a las {2} con {3} .";
+                            }  
                             var parametros = new List<string>
                             {
                                 cita.NOMBRE,
                                 cita.FECHA?.ToString("dd/MM/yyyy"), // Formato día/mes/año
-                                cita.HORA?.ToString(@"hh\:mm")      // Formato de hora "hh:mm"
+                                cita.HORA.HasValue ? DateTime.Today.Add(cita.HORA.Value)
+                                .ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture): "Hora no especificada",
+                                cita.DOCTOR
                             };
 
                             if (!string.IsNullOrWhiteSpace(haciaNumero))
@@ -1090,7 +1103,7 @@ public class Worker : BackgroundService
                                 {
                                     Console.WriteLine($"Mensaje enviado correctamente a {cita.NOMBRE}.");
 
-                                    // Actualizar el campo COLOR a "VERDE"
+                                    // Actualizar el campo CEDULA a "SI"
                                     var respuestaEdicion = await objDetallesCitasServicios.ActualizarCampo(
                                         cita.FECHA.Value.Date,
                                         cita.SILLA ?? 0,
@@ -1389,6 +1402,7 @@ public class Worker : BackgroundService
             var objTHistorialServicios = new THISTORIALServicios();
             var objTCitasServicios = new TCITASServicios();
             var objDetalleCitasServicios = new TDETALLECITASServicios();
+            var objFrasesParaAgendar = new T_FRASE_XEVOLUCIONServicios();
             using (var _dbcontext = new AppDbContext())
             {
                 objAgenda.lstDetallaCitas[0].IDCONSECUTIVO = int.Parse(await _dbcontext.CONSULTAR_GENERADOR("GEN_DETALLECITAS"));
@@ -1442,12 +1456,26 @@ public class Worker : BackgroundService
                     haciaNumero = ValidarYAgregarPrefijo(objAgenda.lstDetallaCitas[0].CELULAR);
                 }
 
-                var templateNombre = "mi_plantilla";
+                
+                var fraseRecordatorio = await objFrasesParaAgendar.ConsultarPorTipo(6);
+                var templateNombre = "";
+
+                if (fraseRecordatorio != null)
+                {
+                    templateNombre = fraseRecordatorio.CONTENIDO;
+                }
+                else
+                {
+                    templateNombre = "Hola {0}, tu cita a sido agendada para el dia {1} a las {2} con {3} .";
+                }
                 var parametros = new List<string>
                 {
                     objAgenda.lstDetallaCitas[0].NOMBRE,
                     objAgenda.lstDetallaCitas[0].FECHA?.ToString("dd/MM/yyyy"), // Formato día/mes/año
-                    objAgenda.lstDetallaCitas[0].HORA?.ToString(@"hh\:mm")      // Formato de hora "hh:mm"
+                    objAgenda.lstDetallaCitas[0].HORA.HasValue ? DateTime.Today.Add(objAgenda.lstDetallaCitas[0].HORA.Value)
+                    .ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture): "Hora no especificada",
+                    //objAgenda.lstDetallaCitas[0].HORA?.ToString(@"hh\:mm"),      // Formato de hora "hh:mm"
+                    objAgenda.lstDetallaCitas[0].DOCTOR
                 };
 
                 if (!string.IsNullOrWhiteSpace(haciaNumero))
