@@ -23,14 +23,39 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             try
             {
+                
                 var url = "http://localhost:3000/send-message"; // URL de tu servidor Node.js
+
+                // Validar si el template y los parámetros son válidos
+                if (string.IsNullOrEmpty(templateNombre))
+                {
+                    Console.WriteLine("La plantilla del mensaje está vacía.");
+                    return false;
+                }
+
+                if (parametros == null || parametros.Count == 0)
+                {
+                    Console.WriteLine("No hay parámetros para reemplazar en la plantilla.");
+                    return false;
+                }
+
+                // Reemplazar los marcadores de posición con los parámetros
+                string mensajePersonalizado = templateNombre;
+                for (int i = 0; i < parametros.Count; i++)
+                {
+                    mensajePersonalizado = mensajePersonalizado.Replace($"{{{i}}}", parametros[i]);
+                }
+
+                //Validar los saltos de linea
+                var mensajeFormateado = mensajePersonalizado.Replace("\\n", "\n");
 
                 var payload = new
                 {
                     phoneNumber = haciaNumero,
-                    message = $"Hola {parametros[0]}, te recordamos que tu cita está agendada para el dia {parametros[1]} a las {parametros[2]}."
+                    message = mensajeFormateado
                 };
 
+                
                 var jsonContent = new StringContent(
                     JsonConvert.SerializeObject(payload),
                     Encoding.UTF8,
@@ -63,10 +88,34 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 var url = "http://localhost:3000/send-message"; // URL de tu servidor Node.js
 
+                // Validar si el template y los parámetros son válidos
+                if (string.IsNullOrEmpty(templateNombre))
+                {
+                    Console.WriteLine("La plantilla del mensaje está vacía.");
+                    return false;
+                }
+
+                if (parametros == null || parametros.Count == 0)
+                {
+                    Console.WriteLine("No hay parámetros para reemplazar en la plantilla.");
+                    return false;
+                }
+
+                // Reemplazar los marcadores de posición con los parámetros
+                string mensajePersonalizado = templateNombre;
+                for (int i = 0; i < parametros.Count; i++)
+                {
+                    mensajePersonalizado = mensajePersonalizado.Replace($"{{{i}}}", parametros[i]);
+                }
+
+                //Validar los saltos de linea
+                var mensajeFormateado = mensajePersonalizado.Replace("\\n", "\n");
+                
+
                 var payload = new
                 {
                     phoneNumber = haciaNumero,
-                    message = $"Hola {parametros[0]}, tu cita a sido agendada para el dia {parametros[1]} a las {parametros[2]}."
+                    message = mensajeFormateado
                 };
 
                 var jsonContent = new StringContent(
