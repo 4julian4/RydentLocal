@@ -35,18 +35,23 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
         {
             using (var _dbcontext = new AppDbContext())
             {
+                // Obtener el IDANAMNESIS más alto actual y sumarle 1
+                int nuevoId = (_dbcontext.TANAMNESIS.Max(x => (int?)x.IDANAMNESIS) ?? 0) + 1;
+
+
                 // Configura AutoMapper para ignorar el campo IDANAMNESIS solo en este mapeo
                 var mapperConfig = new MapperConfiguration(cfg =>
                 {
-                    cfg.CreateMap<DatosPersonales, TANAMNESIS>()
-                    .ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());
+                    cfg.CreateMap<DatosPersonales, TANAMNESIS>();
+                    /*.ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());
                     cfg.CreateMap<TANAMNESIS, DatosPersonales>()
-                    .ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());
+                    .ForMember(dest => dest.IDANAMNESIS, opt => opt.Ignore());*/
                 });
 
                 var mapper = mapperConfig.CreateMapper();
 
                 var obj = mapper.Map<TANAMNESIS>(datosPersonales);
+                obj.IDANAMNESIS = nuevoId; // Asignar el nuevo ID manualmente
                 _dbcontext.TANAMNESIS.Add(obj);
                 await _dbcontext.SaveChangesAsync();
                 return obj.IDANAMNESIS; // Retorna el ID generado por la base de datos
@@ -101,29 +106,40 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
             }
         }
 
-        public async Task<bool> Editar(int IDANAMNESIS, DatosPersonales datospersonales)
+        public async Task<int> Editar(int IDANAMNESIS, DatosPersonales datospersonales)
         {
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
                 if (obj == null)
                 {
-                    return false;
+                    return 0; // Retorna 0 si no se encuentra el registro
                 }
-                else
+
+                _dbcontext.Entry(obj).CurrentValues.SetValues(datospersonales);
+                try
                 {
-                    _dbcontext.Entry(obj).CurrentValues.SetValues(datospersonales);
                     await _dbcontext.SaveChangesAsync();
-                    return true;
+                    return obj.IDANAMNESIS; // Retorna el ID después de la actualización
+
                 }
+
+                catch (Exception e)
+                {
+
+                    return obj.IDANAMNESIS=0;
+                }
+                
             }
+                
         }
+
     }
 
     public interface IDatosPersonalesServicios
     {
         Task<int> Agregar(DatosPersonales datosPersonales);
-        Task<bool> Editar(int IDANAMNESIS, DatosPersonales datosPersonales);
+        Task<int> Editar(int IDANAMNESIS, DatosPersonales datosPersonales);
         Task<DatosPersonales> ConsultarPorId(int IDANAMNESIS);
         Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR);
         Task Borrar(int IDANAMNESIS);
