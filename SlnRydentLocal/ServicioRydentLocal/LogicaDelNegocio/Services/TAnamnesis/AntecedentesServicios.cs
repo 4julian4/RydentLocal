@@ -37,20 +37,20 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
             }
         }
 
-        public async Task<bool> Editar(int IDANAMNESIS, Antecedentes antecedentes)
+        public async Task<int> Editar(int IDANAMNESIS, Antecedentes antecedentes)
         {
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS == IDANAMNESIS);
                 if (obj == null)
                 {
-                    return false;
+                    return 0; // Retorna 0 si no se encuentra el registro
                 }
                 else
                 {
                     _dbcontext.Entry(obj).CurrentValues.SetValues(antecedentes);
                     await _dbcontext.SaveChangesAsync();
-                    return true;
+                    return obj.IDANAMNESIS; // Retorna el ID después de la actualización
                 }
             }
         }
@@ -58,7 +58,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis
 
     public interface IAntecedentesServicios
     {
-        Task<bool> Editar(int IDANAMNESIS, Antecedentes antecedentes);
+        Task<int> Editar(int IDANAMNESIS, Antecedentes antecedentes);
         Task<Antecedentes> ConsultarPorId(int IDANAMNESIS);
     }
 }

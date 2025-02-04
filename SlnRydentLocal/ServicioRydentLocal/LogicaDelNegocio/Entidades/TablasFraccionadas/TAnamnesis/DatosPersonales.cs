@@ -67,7 +67,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAna
         public string? CODIGO_DEPARTAMENTO { set; get; }
         public string? CODIGO_EPS { set; get; }
         public string? CODIGO_EPS_LISTADO { set; get; }
-        public string? NUMERO_TTITULAR { set; get; }
+        public int? NUMERO_TTITULAR { set; get; }
         public string? NOMBREPADRE { set; get; }
         public string? TELEFONOPADRE { set; get; }
         public string? NOMBRE_MADRE { set; get; }
@@ -80,5 +80,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAna
         public string? RELACIONPADRES { set; get; }
         public int ACTIVO { set; get; }
         public int? IDREFERIDOPOR { set; get; }
+        public int? COD_DOCTOR { set; get; }
+        public string? DOCTOR { set; get; }
+
+
     }
 }

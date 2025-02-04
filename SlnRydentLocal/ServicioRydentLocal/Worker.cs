@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Newtonsoft.Json;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
+using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
 using ServicioRydentLocal.LogicaDelNegocio.Helpers;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
 using ServicioRydentLocal.LogicaDelNegocio.Services;
@@ -129,7 +130,25 @@ public class Worker : BackgroundService
         {
             Console.WriteLine("***************************");
             await GuardarDatosEvolucion(clientId, datosEvolucion);
-        }); 
+        });
+
+        _hubConnection.On<string, string>("GuardarDatosPersonales", async (clientId, datosPersonales) =>
+        {
+            Console.WriteLine("***************************");
+            await GuardarDatosPersonales(clientId, datosPersonales);
+        });
+
+        _hubConnection.On<string, string>("EditarDatosPersonales", async (clientId, datosPersonales) =>
+        {
+            Console.WriteLine("***************************");
+            await EditarDatosPersonales(clientId, datosPersonales);
+        });
+
+        _hubConnection.On<string, string>("EditarAntecedentes", async (clientId, antecedentesPaciente) =>
+        {
+            Console.WriteLine("***************************");
+            await EditarAntecedentes(clientId, antecedentesPaciente);
+        });
 
         _hubConnection.On<string, string>("GuardarDatosRips", async (clientId, datosRips) =>
         {
@@ -176,6 +195,8 @@ public class Worker : BackgroundService
     //3. Autenticar el pin de acceso de Rydent se usando await RecibirPinRydent(pin, clientId);
     //4. Enviar el pin de acceso de Rydent al servidor de Rydent
     // Método para conectar al servidor y registrar el equipo
+    
+
     public async Task ConnectToServer(IServiceProvider serviceProvider)
     {
         try
@@ -188,6 +209,7 @@ public class Worker : BackgroundService
                 if (_hubConnection.State == HubConnectionState.Connected)
                 {
                     await RegisterDeviceAsync(datosClientes.ENTRADA);
+                    _isDeviceRegistered = true; // Marca como registrado
                 }
                 else
                 {
@@ -202,13 +224,25 @@ public class Worker : BackgroundService
         }
     }
 
+    private bool _isDeviceRegistered = false;
     private async Task RegisterDeviceAsync(string entrada)
     {
         try
         {
             if (_hubConnection.State == HubConnectionState.Connected)
             {
+                // Verificar si ya está registrado
+                bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", entrada);
+                if (isAlreadyRegistered)
+                {
+                    _logger.LogWarning("El dispositivo ya está registrado. No se realizará un registro duplicado.");
+                    _isDeviceRegistered = true;
+                    return;
+                }
+
+                // Registrar el dispositivo
                 await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
+                _isDeviceRegistered = true;
                 _logger.LogInformation("Equipo registrado con éxito.");
             }
         }
@@ -218,10 +252,18 @@ public class Worker : BackgroundService
         }
     }
 
+
+
     private async Task AttemptReconnectAsync()
     {
         try
         {
+            if (_hubConnection.State != HubConnectionState.Disconnected)
+            {
+                _logger.LogInformation("La conexión ya está activa. No es necesario reconectar.");
+                return;
+            }
+
             _logger.LogInformation("Intentando reconectar a SignalR...");
             await _hubConnection.StartAsync();
             _logger.LogInformation("Reconexión exitosa.");
@@ -233,41 +275,55 @@ public class Worker : BackgroundService
     }
 
 
-    // Método principal que se ejecuta en segundo plano
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await StartConnectionAsync();
-        await registrarSuscripciones();
+        await StartConnectionAsync(); // Inicia la conexión al servidor
+        await registrarSuscripciones(); // Registra los eventos necesarios
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            _logger.LogInformation("Iniciando la consulta a la tabla");
+            _logger.LogInformation("Iniciando la consulta a la tabla...");
 
             try
             {
                 using (var scope = _scopeFactory.CreateScope())
                 {
+                    // Verificar estado de conexión y reconectar si es necesario
                     if (_hubConnection.State != HubConnectionState.Connected)
                     {
-                        await StartConnectionAsync();  // Intenta reconectar si la conexión está caída
+                        _logger.LogWarning("Conexión a SignalR perdida. Intentando reconectar...");
+                        await AttemptReconnectAsync();
                     }
 
-                    await ConnectToServer(scope.ServiceProvider);  // Conecta al servidor y registra el equipo
+                    // Registrar dispositivo si no está registrado
+                    if (!_isDeviceRegistered)
+                    {
+                        var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
+                        var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(System.Environment.MachineName);
+
+                        _logger.LogInformation($"Intentando registrar el dispositivo con entrada: {datosClientes.ENTRADA}");
+                        await RegisterDeviceAsync(datosClientes.ENTRADA);
+                    }
 
                     _logger.LogInformation("Consulta completada correctamente.");
                 }
+
+                // Esperar antes de la siguiente iteración
                 await Task.Delay(TimeSpan.FromMinutes(3), stoppingToken);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogWarning("Operación cancelada.");
+                _logger.LogWarning("Operación cancelada por solicitud.");
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error durante la ejecución: {ex.Message}");
+                _logger.LogError($"Error durante la ejecución del método: {ex.Message}");
+                // Retraso dinámico en caso de error para evitar bucles rápidos
+                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
             }
         }
     }
+
 
 
 
@@ -738,9 +794,138 @@ public class Worker : BackgroundService
         }
         
     }
+    
+    public async Task GuardarDatosPersonales(string clientId, string datosPersonales)
+    {
+        try
+        {
+            var objDatosPersonalesCompletos = JsonConvert.DeserializeObject<RespuestaDatosPersonales>(datosPersonales);
+            var objDatosPersonales = objDatosPersonalesCompletos.datosPersonales;
+            var objFotoPaciente = objDatosPersonalesCompletos.strFotoFrontal;
+            var objDatosPersonalesServicios = new DatosPersonalesServicios(); 
+            var objFotosFrontalesServicios = new TFOTOSFRONTALESServicios();
+            var objTratamientosServicios = new TTRATAMIENTOServicios();
+            var archivosHelper = new ArchivosHelper();
+            var resultado = await objDatosPersonalesServicios.Agregar(objDatosPersonales);
+            // Verificar si la imagen es válida antes de convertir
+            if (!string.IsNullOrEmpty(objFotoPaciente) && EsBase64Valido(objFotoPaciente))
+            {
+                var fotoPaciente = new TFOTOSFRONTALES
+                {
+                    IDANAMNESIS = resultado,
+                    FOTOFRENTE = Convert.FromBase64String(objFotoPaciente)
+                };
+                await objFotosFrontalesServicios.Agregar(fotoPaciente);
+            }
+            // meter datos para inicializar tratamiento
 
-   
-    public async Task<RespuestaConsultarPorDiaYPorUnidadModel> ConsultarPorDiaYPorUnidad(string clientId, int silla, DateTime fecha)
+            if (resultado > 0)
+            {
+                var tratamientoPaciente = new TTRATAMIENTO
+                {
+                    IDTRATAMIENTO = resultado,
+                    FECHA = objDatosPersonales.FECHA_INGRESO_DATE ?? DateTime.Now.Date,
+                    NUMTRAT = 1,
+                    ID_DOCTOR = objDatosPersonales.COD_DOCTOR
+                };
+                await objTratamientosServicios.Agregar(tratamientoPaciente);
+            }
+
+            await _hubConnection.InvokeAsync("RespuestaGuardarDatosPersonales", clientId, resultado.ToString());
+        }
+        catch (Exception e)
+        {
+            throw;
+        }
+
+    }
+
+    // Método para validar Base64 antes de convertir
+    private bool EsBase64Valido(string base64String)
+    {
+        Span<byte> buffer = new Span<byte>(new byte[base64String.Length]);
+        return Convert.TryFromBase64String(base64String, buffer, out _);
+    }
+
+    public async Task EditarDatosPersonales(string clientId, string datosPersonales)
+    {
+        try
+        {
+            var objDatosPersonalesCompletos = JsonConvert.DeserializeObject<RespuestaDatosPersonales>(datosPersonales);
+            var objDatosPersonales = objDatosPersonalesCompletos.datosPersonales;
+            var objFotoPaciente = objDatosPersonalesCompletos.strFotoFrontal;
+
+            var objDatosPersonalesServicios = new DatosPersonalesServicios();
+            var objFotosFrontalesServicios = new TFOTOSFRONTALESServicios();
+
+            // Verificar si el paciente existe antes de actualizar
+            var pacienteExistente = await objDatosPersonalesServicios.ConsultarPorId(objDatosPersonales.IDANAMNESIS);
+            if (pacienteExistente == null)
+            {
+                await _hubConnection.InvokeAsync("ErrorEdicionDatosPersonales", clientId, "Paciente no encontrado");
+                return;
+            }
+
+            // Actualizar datos personales
+            var resultado = await objDatosPersonalesServicios.Editar(objDatosPersonales.IDANAMNESIS, objDatosPersonales);
+
+            // Si hay una nueva imagen, actualizarla
+            if (!string.IsNullOrEmpty(objFotoPaciente) && EsBase64Valido(objFotoPaciente))
+            {
+                var fotoPaciente = new TFOTOSFRONTALES
+                {
+                    IDANAMNESIS = objDatosPersonales.IDANAMNESIS,
+                    FOTOFRENTE = Convert.FromBase64String(objFotoPaciente)
+                };
+
+                await objFotosFrontalesServicios.Editar(fotoPaciente);
+            }
+
+            await _hubConnection.InvokeAsync("RespuestaEditarDatosPersonales", clientId, resultado.ToString());
+        }
+        catch (Exception e)
+        {
+            await _hubConnection.InvokeAsync("ErrorEdicionDatosPersonales", clientId, e.Message);
+        }
+    }
+        
+        
+        public async Task EditarAntecedentes(string clientId, string antecedentesPaciente)
+        {
+            try
+            {
+                var objAntecedentes = JsonConvert.DeserializeObject<Antecedentes>(antecedentesPaciente);
+            
+               
+                var objDatosPersonalesServicios = new DatosPersonalesServicios();
+                var objAntecedentesPacienteServicios = new AntecedentesServicios();
+
+                // Verificar si el paciente existe antes de actualizar
+                var pacienteExistente = await objDatosPersonalesServicios.ConsultarPorId(objAntecedentes.IDANAMNESIS);
+                if (pacienteExistente == null)
+                {
+                    await _hubConnection.InvokeAsync("ErrorEdicionDatosPersonales", clientId, "Paciente no encontrado");
+                    return;
+                }
+
+                // Actualizar datos personales
+                var resultado = await objAntecedentesPacienteServicios.Editar(objAntecedentes.IDANAMNESIS, objAntecedentes);
+
+                
+
+                await _hubConnection.InvokeAsync("RespuestaEditarAntecedentes", clientId, resultado.ToString());
+            }
+            catch (Exception e)
+            {
+                await _hubConnection.InvokeAsync("ErrorEdicionDatosPersonales", clientId, e.Message);
+            }
+        }
+
+
+
+
+
+        public async Task<RespuestaConsultarPorDiaYPorUnidadModel> ConsultarPorDiaYPorUnidad(string clientId, int silla, DateTime fecha)
     {
         var objHorariosAgenda = new THORARIOSAGENDAServicios();
         var objRespuestaConsultarPorDiaYPorUnidad = new P_AGENDA1();
@@ -1352,6 +1537,7 @@ public class Worker : BackgroundService
             var objTHistorialServicios = new THISTORIALServicios();
             var objTCitasServicios = new TCITASServicios();
             var objDetalleCitasServicios = new TDETALLECITASServicios();
+            var objFrasesParaAgendar = new T_FRASE_XEVOLUCIONServicios();
             var objDetalleCitasEditar = objAgenda.detalleCitaEditar;
             var objDetalleCitas= objAgenda.lstDetallaCitas[0];
             
@@ -1373,11 +1559,62 @@ public class Worker : BackgroundService
                 var obdIdAnamnesis = await objAnamnesis.ConsultarPorIdTexto(objDetalleCitas.ID);
                 var objTHistorial = new THISTORIAL() { DESCRIPCION = mensajeDescripcion, FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = objDetalleCitas.ID, IDANAMNESIS = obdIdAnamnesis.IDANAMNESIS };
                 await objTHistorialServicios.Agregar(objTHistorial);
-                    
-                
-                
-                
-                
+                if (objDetalleCitasEditar.FECHA != objDetalleCitas.FECHA || objDetalleCitasEditar.HORA != objDetalleCitas.HORA)
+                {
+                    //---------------------enviamos mensaje-------------------------------------------------//
+                    //Enviar mensaje cita ha sido asignada para el dia a la hora
+                    var servicioWhatsApp = new WhatsAppService();
+                    var haciaNumero = ValidarYAgregarPrefijo(objDetalleCitas.TELEFONO);
+                    if (string.IsNullOrWhiteSpace(haciaNumero))
+                    {
+                        haciaNumero = ValidarYAgregarPrefijo(objDetalleCitas.CELULAR);
+                    }
+
+
+                    var fraseRecordatorio = await objFrasesParaAgendar.ConsultarPorTipo(6);
+                    var templateNombre = "";
+
+                    if (fraseRecordatorio != null)
+                    {
+                        templateNombre = fraseRecordatorio.CONTENIDO;
+                    }
+                    else
+                    {
+                        templateNombre = "Hola {0}, tu cita ha sido reagendada para el dia {1} a las {2} con {3} .";
+                    }
+                    var parametros = new List<string>
+                    {
+                        objDetalleCitas.NOMBRE,
+                        objDetalleCitas.FECHA?.ToString("dd/MM/yyyy"), // Formato día/mes/año
+                        objDetalleCitas.HORA.HasValue ? DateTime.Today.Add(objDetalleCitas.HORA.Value)
+                        .ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture): "Hora no especificada",
+                        //objAgenda.lstDetallaCitas[0].HORA?.ToString(@"hh\:mm"),      // Formato de hora "hh:mm"
+                        objDetalleCitas.DOCTOR
+                    };
+
+                    if (!string.IsNullOrWhiteSpace(haciaNumero))
+                    {
+                        var resultado = await servicioWhatsApp.EnviarMensajeCitaAgenda(haciaNumero, templateNombre, parametros);
+
+                        if (!resultado)
+                        {
+                            Console.WriteLine($"Error al enviar el mensaje para la cita con ID: {objDetalleCitas.ID}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Mensaje enviado correctamente a {objDetalleCitas.NOMBRE}.");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Datos incompletos para enviar mensaje a {objDetalleCitas.NOMBRE}.");
+                    }
+                    //--------------------------------------------------------------------------------------//
+                }
+
+
+
+
                 var objResp = new RespuestaConsultarPorDiaYPorUnidadModel();
                 objResp.lstConfirmacionesPedidas = new List<ConfirmacionesPedidasModel>();
                 objResp.lstConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel() { mensaje = "Cita editada correctamente", nombreConfirmacion = "CITA_GUARDADA", pedirConfirmar = false, esMensajeRestrictivo = false });
@@ -1466,7 +1703,7 @@ public class Worker : BackgroundService
                 }
                 else
                 {
-                    templateNombre = "Hola {0}, tu cita a sido agendada para el dia {1} a las {2} con {3} .";
+                    templateNombre = "Hola {0}, tu cita ha sido agendada para el dia {1} a las {2} con {3} .";
                 }
                 var parametros = new List<string>
                 {

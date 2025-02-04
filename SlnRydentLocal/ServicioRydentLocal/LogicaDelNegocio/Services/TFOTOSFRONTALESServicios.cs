@@ -36,11 +36,35 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return (obj == null || obj.FOTOFRENTE.Length < 1) ? "" : Convert.ToBase64String(obj.FOTOFRENTE);
             }
         }
+
+        //agregar foto frontal
+        public async Task<bool> Agregar(TFOTOSFRONTALES datosFotoFrontal)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                _dbcontext.TFOTOSFRONTALES.Add(datosFotoFrontal);
+                await _dbcontext.SaveChangesAsync();
+                return true;
+            }
+        }
+
+        //editar foto frontal
+        public async Task<bool> Editar(TFOTOSFRONTALES datosFotoFrontal)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                _dbcontext.TFOTOSFRONTALES.Update(datosFotoFrontal);
+                await _dbcontext.SaveChangesAsync();
+                return true;
+            }
+        }
     }
 
     public interface ITFOTOSFRONTALESServicios
     {
         Task<TFOTOSFRONTALES> ConsultarPorId(int IDANAMNESIS);
         Task<string> ConsultarBase64PorId(int IDANAMNESIS);
+        Task<bool> Agregar(TFOTOSFRONTALES datosFotoFrontal);
+        Task<bool> Editar(TFOTOSFRONTALES datosFotoFrontal);
     }
 }
