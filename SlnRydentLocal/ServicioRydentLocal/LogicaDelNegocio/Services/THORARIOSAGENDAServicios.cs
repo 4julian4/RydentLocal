@@ -46,14 +46,34 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        public async Task<List<THORARIOSAGENDA>> ConsultarTodos()
+        /*public async Task<List<THORARIOSAGENDA>> ConsultarTodos()
         {
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.THORARIOSAGENDA.ToListAsync();
                 return obj == null ? new List<THORARIOSAGENDA>() : obj;
             }
+        }*/
+
+        public async Task<List<THORARIOSAGENDA>> ConsultarTodos()
+        {
+            try
+            {
+                using (var _dbcontext = new AppDbContext())
+                {
+                    var obj = await _dbcontext.THORARIOSAGENDA.ToListAsync();
+                    return obj ?? new List<THORARIOSAGENDA>(); // Usamos el operador null-coalescing (??) para simplificar
+                }
+            }
+            catch (Exception ex)
+            {
+                // Aquí puedes hacer un log o manejar el error como desees
+                // Por ejemplo:
+                Console.WriteLine($"Error al consultar los horarios de agenda: {ex.Message}");
+                return new List<THORARIOSAGENDA>(); // En caso de error, retornamos una lista vacía
+            }
         }
+
 
 
 

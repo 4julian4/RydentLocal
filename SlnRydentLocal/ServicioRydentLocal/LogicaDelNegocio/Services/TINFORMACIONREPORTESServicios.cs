@@ -39,6 +39,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+        public async Task<List<TINFORMACIONREPORTES>> ConsultarTodos()
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.TINFORMACIONREPORTES.ToListAsync();
+                return obj == null ? new List<TINFORMACIONREPORTES>() : obj;
+            }
+        }
+        
+
         public async Task<TINFORMACIONREPORTES> ConsultarPorId(int ID)
         {
             using (var _dbcontext = new AppDbContext())
@@ -47,6 +57,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 return obj == null ? new TINFORMACIONREPORTES() : obj;
             }
         }
+
+
 
         public async Task<string> ConsultarCodigoPrestador(int IDDOCTOR)
         {
@@ -87,6 +99,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
     {
         Task<int> Agregar(TINFORMACIONREPORTES tinformacionreportes);
         Task<bool> Editar(int ID, TINFORMACIONREPORTES tinformacionreportes);
+        Task<List<TINFORMACIONREPORTES>> ConsultarTodos();
         Task<TINFORMACIONREPORTES> ConsultarPorId(int ID);
         Task<string> ConsultarCodigoPrestador(int IDDOCTOR);
         Task Borrar(int ID);

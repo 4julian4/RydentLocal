@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
     //public DbSet<HC_FOTOS_SA> HC_FOTOS_SA { get; set; }
     //public DbSet<HC_FOTOS> HC_FOTOS { get; set; }
     public DbSet<T_ADICIONALES_ABONOS> T_ADICIONALES_ABONOS { get; set; }
+    public DbSet<T_ADICIONALES_ABONOS_MOTIVOS> T_ADICIONALES_ABONOS_MOTIVOS { get; set; }
     public DbSet<T_CONFIGURACION_VALOR> T_CONFIGURACION_VALOR { get; set; }
     public DbSet<T_CUENTASXCOBRAR> T_CUENTASXCOBRAR { get; set; }
     public DbSet<TCITASPENDIENTES> TCITASPENDIENTES { get; set; }
@@ -78,6 +79,7 @@ public class AppDbContext : DbContext
     DbSet<P_AGENDA1> P_AGENDA1_Result { get; set; }
     DbSet<P_CONSULTAR_ESTACUENTAPACIENTE> P_CONSULTAR_ESTACUENTAPACIENTE_Result { get; set; }
     DbSet<P_CONSULTAR_ESTACUENTA_TOTAL_F> P_CONSULTAR_ESTACUENTA_TOTAL_F_Result { get; set; }
+    DbSet<P_CONSULTAR_ESTACUENTA_TOTAL> P_CONSULTAR_ESTACUENTA_TOTAL_Result { get; set; }
     DbSet<P_CONSULTAR_ESTACUENTA> P_CONSULTAR_ESTACUENTA_Result { get; set; }
     DbSet<P_CONSULTAR_MORA_ID_TEXTO> P_CONSULTAR_MORA_ID_TEXTO_Result { get; set; }
     public DbSet<RespuestaSaldoPorDoctor> RespuestaSaldoPorDoctor { get; set;}
@@ -89,6 +91,85 @@ public class AppDbContext : DbContext
         var s = await this.P_BUSCARPACIENTE_Result.FromSqlRaw("select distinct * from P_BUSCARPACIENTE(@TIPO, @P_VALOR)", TIPOParameter, P_VALORParameter).ToListAsync();
         return s;
     }
+
+    //------------------------------Aca ubicamos lo que tiene que ver con el Rips------------------------------//
+    DbSet<P_ADICIONALES_ABONOS_DIAN_Result> P_ADICIONALES_ABONOS_DIAN_Result { get; set; }
+    DbSet<P_DIAN_FACTURASPENDIENTES_Results> P_DIAN_FACTURASPENDIENTES_Results { get; set; }
+    DbSet<P_DIAN_FACTURASCREADAS_Results> P_DIAN_FACTURASCREADAS_Results { get; set; }
+    DbSet<SP_RIPS_JSON_APResult> SP_RIPS_JSON_APResult { get; set; }
+    DbSet<SP_RIPS_JSON_USResult> SP_RIPS_JSON_USResult { get; set; }
+    DbSet<SP_RIPS_JSON_ACResult> SP_RIPS_JSON_ACResult { get; set; }
+    public List<P_ADICIONALES_ABONOS_DIAN_Result> P_ADICIONALES_ABONOS_DIAN(int PIDRELACION)
+    {
+        var PIDRELACIONParameter = new FbParameter("PIDRELACION", PIDRELACION);
+        var s = this.P_ADICIONALES_ABONOS_DIAN_Result.FromSqlRaw("select * from P_ADICIONALES_ABONOS_DIAN(@PIDRELACION)", PIDRELACIONParameter).ToList();
+        return s;
+    }
+
+
+    public List<P_ADICIONALES_ABONOS_DIAN_Result> P_CXC_DIAN(int PIDRELACION)
+    {
+        var PIDRELACIONParameter = new FbParameter("PIDRELACION", PIDRELACION);
+        var s = this.P_ADICIONALES_ABONOS_DIAN_Result.FromSqlRaw("select * from P_CXC_DIAN(@PIDRELACION)", PIDRELACIONParameter).ToList();
+        return s;
+    }
+
+    public List<P_DIAN_FACTURASPENDIENTES_Results> P_DIAN_FACTURASPENDIENTES()
+    {
+        var s = this.P_DIAN_FACTURASPENDIENTES_Results.FromSqlRaw("select * from P_DIAN_FACTURASPENDIENTES").ToList();
+        return s;
+    }
+    public List<P_DIAN_FACTURASCREADAS_Results> P_DIAN_FACTURASCREADAS(string pFactura)
+    {
+        var PFACTURAParameter = new FbParameter("PFACTURA", pFactura);
+        var s = this.P_DIAN_FACTURASCREADAS_Results.FromSqlRaw("select * from P_DIAN_FACTURASCREADAS(@PFACTURA)", PFACTURAParameter).ToList();
+        return s;
+    }
+    
+    public List<SP_RIPS_JSON_APResult> SP_RIPS_JSON_AP(DateTime FECHAINI, DateTime FECHAFIN, string EPS, string FACTURA, int IDREPORTE, int IDDOCTOR, string EXTRANJERO)
+    {
+        var FECHAINIParameter = new FbParameter("FECHAINI", FECHAINI);
+        var FECHAFINParameter = new FbParameter("FECHAFIN", FECHAFIN);
+        var EPSParameter = new FbParameter("EPS", EPS);
+        var FACTURAParameter = new FbParameter("FACTURA", FACTURA);
+        var IDREPORTEParameter = new FbParameter("IDREPORTE", IDREPORTE);
+        var IDDOCTORParameter = new FbParameter("IDDOCTOR", IDDOCTOR);
+        var EXTRANJEROParameter = new FbParameter("EXTRANJERO", EXTRANJERO);
+        var s = this.SP_RIPS_JSON_APResult.FromSqlRaw("select * from SP_RIPS_JSON_AP(@FECHAINI, @FECHAFIN, @EPS, @FACTURA, @IDREPORTE, @IDDOCTOR, @EXTRANJERO)",
+            FECHAINIParameter, FECHAFINParameter, EPSParameter, FACTURAParameter, IDREPORTEParameter, IDDOCTORParameter, EXTRANJEROParameter).ToList();
+        return s;
+    }
+    public List<SP_RIPS_JSON_USResult> SP_RIPS_JSON_US(DateTime FECHAINI, DateTime FECHAFIN, string EPS, string FACTURA, int IDREPORTE, int IDDOCTOR, string EXTRANJERO)
+    {
+        var FECHAINIParameter = new FbParameter("FECHAINI", FECHAINI);
+        var FECHAFINParameter = new FbParameter("FECHAFIN", FECHAFIN);
+        var EPSParameter = new FbParameter("EPS", EPS);
+        var FACTURAParameter = new FbParameter("FACTURA", FACTURA);
+        var IDREPORTEParameter = new FbParameter("IDREPORTE", IDREPORTE);
+        var IDDOCTORParameter = new FbParameter("IDDOCTOR", IDDOCTOR);
+        var EXTRANJEROParameter = new FbParameter("EXTRANJERO", EXTRANJERO);
+        var s = this.SP_RIPS_JSON_USResult.FromSqlRaw("select * from SP_RIPS_JSON_US(@FECHAINI, @FECHAFIN, @EPS, @FACTURA, @IDREPORTE, @IDDOCTOR, @EXTRANJERO)",
+            FECHAINIParameter, FECHAFINParameter, EPSParameter, FACTURAParameter, IDREPORTEParameter, IDDOCTORParameter, EXTRANJEROParameter).ToList();
+        return s;
+    }
+    public List<SP_RIPS_JSON_ACResult> SP_RIPS_JSON_AC(DateTime FECHAINI, DateTime FECHAFIN, string EPS, string FACTURA, int IDREPORTE, int IDDOCTOR, string EXTRANJERO)
+    {
+        var FECHAINIParameter = new FbParameter("FECHAINI", FECHAINI);
+        var FECHAFINParameter = new FbParameter("FECHAFIN", FECHAFIN);
+        var EPSParameter = new FbParameter("EPS", EPS);
+        var FACTURAParameter = new FbParameter("FACTURA", FACTURA);
+        var IDREPORTEParameter = new FbParameter("IDREPORTE", IDREPORTE);
+        var IDDOCTORParameter = new FbParameter("IDDOCTOR", IDDOCTOR);
+        var EXTRANJEROParameter = new FbParameter("EXTRANJERO", EXTRANJERO);
+        var s = this.SP_RIPS_JSON_ACResult.FromSqlRaw("select * from SP_RIPS_JSON_AC(@FECHAINI, @FECHAFIN, @EPS, @FACTURA, @IDREPORTE, @IDDOCTOR, @EXTRANJERO)",
+            FECHAINIParameter, FECHAFINParameter, EPSParameter, FACTURAParameter, IDREPORTEParameter, IDDOCTORParameter, EXTRANJEROParameter).ToList();
+        return s;
+    }
+    
+    
+
+
+    //------------------------------Aca ubicamos lo que tiene que ver con el Rips------------------------------//
 
     [Keyless]
     private class Generador
@@ -126,6 +207,16 @@ public class AppDbContext : DbContext
         var IN_CUOTASParameter = new FbParameter("IN_CUOTAS", IN_CUOTAS);
         var FECHA_FINParameter = new FbParameter("FECHA_FIN", FECHA_FIN);
         var s = await this.P_CONSULTAR_ESTACUENTA_TOTAL_F_Result.FromSqlRaw("select * from P_CONSULTAR_ESTACUENTA_TOTAL_F(@IDDOCTOR, @IN_FECHA_INICIO, @IN_CUOTAS, @FECHA_FIN)", IDDOCTORParameter, IN_FECHA_INICIOParameter, IN_CUOTASParameter, FECHA_FINParameter).ToListAsync();
+        return s;
+    }
+
+    public async Task<List<P_CONSULTAR_ESTACUENTA_TOTAL>> P_CONSULTAR_ESTACUENTA_TOTAL(int IDDOCTOR, DateTime IN_FECHA_INICIO, int IN_CUOTAS)
+    {
+        var IDDOCTORParameter = new FbParameter("IDDOCTOR", IDDOCTOR);
+        //var IN_FECHA_INICIOParameter = new FbParameter("IN_FECHA_INICIO", IN_FECHA_INICIO.Date);
+        var IN_FECHA_INICIOParameter = new FbParameter("IN_FECHA_INICIO", IN_FECHA_INICIO.ToString("yyyy-MM-dd"));
+        var IN_CUOTASParameter = new FbParameter("IN_CUOTAS", IN_CUOTAS);
+        var s = await this.P_CONSULTAR_ESTACUENTA_TOTAL_Result.FromSqlRaw("select * from P_CONSULTAR_ESTACUENTA_TOTAL(@IDDOCTOR, @IN_FECHA_INICIO, @IN_CUOTAS)", IDDOCTORParameter, IN_FECHA_INICIOParameter, IN_CUOTASParameter).ToListAsync();
         return s;
     }
 

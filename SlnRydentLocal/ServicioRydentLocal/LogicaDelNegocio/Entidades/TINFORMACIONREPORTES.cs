@@ -33,7 +33,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
         public string? NUMERO_CONTRATO { get; set; }
         public string? PLAN_BENEFICIOS { get; set; }
         public string? NUMERO_POLIZA { get; set; }
-        public string? CODIGO_ENTIDAD { get; set; }  
+        public string? CODIGO_ENTIDAD { get; set; }
+        public string? NUMDOCUMENTOIDOBLIGADO { get; set; }
+        public string? ENTIDADXDEFECTO { get; set; }
+        public string? IDSISPRO { get; set; }
+        public string? PASSISPRO { get; set; }
+        public Int16? CONFACTURA { get; set; }
     }
 }
-

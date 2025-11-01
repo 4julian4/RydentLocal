@@ -1,4 +1,4 @@
-
+Ôªø
 using AutoMapper.Execution;
 using FirebirdSql.Data.FirebirdClient;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -8,14 +8,18 @@ using Newtonsoft.Json;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
+using ServicioRydentLocal.LogicaDelNegocio.Facturatech;
 using ServicioRydentLocal.LogicaDelNegocio.Helpers;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos.Rips;
 using ServicioRydentLocal.LogicaDelNegocio.Services;
+using ServicioRydentLocal.LogicaDelNegocio.Services.Rips;
 using ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis;
 using SixLabors.ImageSharp;
 using System.Data;
 using System.Globalization;
 using System.Security.Principal;
+using System.Text;
 using System.Text.RegularExpressions;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -25,9 +29,10 @@ public class Worker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private HubConnection _hubConnection;
     private readonly IConfiguration _configuration;
+    private readonly LNRips _lnRips;
 
     // private readonly AppDbContext _dbContext;
-    
+
     private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1); //esto es reciente 16/08/24
 
 
@@ -40,6 +45,7 @@ public class Worker : BackgroundService
         _logger = logger;
         _scopeFactory = scopeFactory;
         _configuration = configuration;
+        _lnRips = new LNRips(_configuration); // ‚úÖ Pasamos IConfiguration
         string url = _configuration.GetValue<string>("signalRServer:url");
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(url)
@@ -52,21 +58,52 @@ public class Worker : BackgroundService
             return Task.CompletedTask;
         };
 
-        _hubConnection.Reconnected += connectionId =>
+        /*_hubConnection.Reconnected += connectionId =>
         {
-            _logger.LogInformation($"Reconnected. Connection ID: {connectionId}");  // Log de informaciÛn cuando la reconexiÛn es exitosa
+            _logger.LogInformation($"Reconnected. Connection ID: {connectionId}");  // Log de informaci√≥n cuando la reconexi√≥n es exitosa
             return Task.CompletedTask;
+        };*/
+
+        _hubConnection.Reconnected += async (connectionId) =>
+        {
+            _logger.LogInformation($"Reconnected. Connection ID: {connectionId}");
+
+            try
+            {
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
+                    var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(System.Environment.MachineName);
+
+                    bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", datosClientes.ENTRADA);
+
+                    if (isAlreadyRegistered)
+                    {
+                        _logger.LogInformation("El dispositivo ya estaba registrado tras la reconexi√≥n.");
+                    }
+                    else
+                    {
+                        _logger.LogInformation("El dispositivo no estaba registrado tras la reconexi√≥n. Registr√°ndolo nuevamente...");
+                        await RegisterDeviceAsync(datosClientes.ENTRADA);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error al verificar o registrar el dispositivo tras la reconexi√≥n: {ex.Message}", ex);
+            }
         };
+
 
         _hubConnection.Closed += async error =>
         {
-            _logger.LogError($"Connection closed due to: {error?.Message}");  // Log de error cuando la conexiÛn se cierra
+            _logger.LogError($"Connection closed due to: {error?.Message}");  // Log de error cuando la conexi√≥n se cierra
             await Task.Delay(TimeSpan.FromSeconds(15));  // Espera 15 segundos antes de intentar reconectar
             await StartConnectionAsync();  // Intenta reconectar
         };
     }
 
-    // MÈtodo para iniciar la conexiÛn a SignalR
+    // M√©todo para iniciar la conexi√≥n a SignalR
     private async Task StartConnectionAsync()
     {
         if (_hubConnection.State == HubConnectionState.Disconnected)
@@ -86,9 +123,9 @@ public class Worker : BackgroundService
    
     private async Task registrarSuscripciones()
     {
-        _hubConnection.On<string, string>("ObtenerPin", async (clientId, pin) =>
+        _hubConnection.On<string, string, int>("ObtenerPin", async (clientId, pin, maxIdAnamnesis) =>
         {
-            await RecibirPinRydent(pin, clientId);
+            await RecibirPinRydent(pin, clientId, maxIdAnamnesis);
         });
 
         _hubConnection.On<string, string>("ObtenerDoctor", async (clientId, idDoctor) =>
@@ -155,14 +192,39 @@ public class Worker : BackgroundService
             await GuardarDatosRips(clientId, datosRips);
         });
 
-        _hubConnection.On<string>("ObtenerCodigosEps", async (clientId) =>
+        _hubConnection.On<string, string>("ObtenerFacturasPorIdEntreFechas", async (clientId, modeloDatosParaConsultarFacturasEntreFechas) =>
+        {
+            await ObtenerFacturasPorIdEntreFechas(clientId, modeloDatosParaConsultarFacturasEntreFechas);
+        });
+
+        _hubConnection.On<string, int, string>("GenerarRips", async (clientId, identificador, objGenerarRips) =>
+        {
+            await GenerarRips(clientId, identificador, objGenerarRips);
+        });
+
+        _hubConnection.On<string, int, string>("PresentarRips", async (clientId, identificador, objPresentarRips) =>
+        {
+            await PresentarRips(clientId, identificador, objPresentarRips);
+        });
+
+        _hubConnection.On<string>("ObtenerFacturasPendientes", async (clientId) =>
+        {
+            await ObtenerFacturasPendientes(clientId);
+        });
+
+		_hubConnection.On<string, string>("ObtenerFacturasCreadas", async (clientId, Factura) =>
+		{
+			await ObtenerFacturasCreadas(clientId, Factura);
+		});
+
+		_hubConnection.On<string>("ObtenerCodigosEps", async (clientId) =>
         {
             await ObtenerCodigosEps(clientId);
         });
 
-        _hubConnection.On<string, DateTime, DateTime>("ObtenerDatosAdministrativos", async (clientId, fechaInicio, fechaFin) =>
+        _hubConnection.On<string, int, DateTime, DateTime>("ObtenerDatosAdministrativos", async (clientId, idDoctor, fechaInicio, fechaFin) =>
         {
-            await ObtenerDatosAdministrativos(clientId, fechaInicio, fechaFin);
+            await ObtenerDatosAdministrativos(clientId, idDoctor, fechaInicio, fechaFin);
         });
 
 
@@ -194,7 +256,7 @@ public class Worker : BackgroundService
     //2. Recibir el pin de acceso de Rydent se usa el evento _hubConnection.On<string, string>("ObtenerPin"
     //3. Autenticar el pin de acceso de Rydent se usando await RecibirPinRydent(pin, clientId);
     //4. Enviar el pin de acceso de Rydent al servidor de Rydent
-    // MÈtodo para conectar al servidor y registrar el equipo
+    // M√©todo para conectar al servidor y registrar el equipo
     
 
     public async Task ConnectToServer(IServiceProvider serviceProvider)
@@ -213,14 +275,14 @@ public class Worker : BackgroundService
                 }
                 else
                 {
-                    _logger.LogWarning("No se pudo registrar el equipo porque la conexiÛn a SignalR no est· establecida.");
+                    _logger.LogWarning("No se pudo registrar el equipo porque la conexi√≥n a SignalR no est√° establecida.");
                     await AttemptReconnectAsync();
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error durante la conexiÛn al servidor: {ex.Message}", ex);
+            _logger.LogError($"Error durante la conexi√≥n al servidor: {ex.Message}", ex);
         }
     }
 
@@ -231,11 +293,11 @@ public class Worker : BackgroundService
         {
             if (_hubConnection.State == HubConnectionState.Connected)
             {
-                // Verificar si ya est· registrado
+                // Verificar si ya est√° registrado
                 bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", entrada);
                 if (isAlreadyRegistered)
                 {
-                    _logger.LogWarning("El dispositivo ya est· registrado. No se realizar· un registro duplicado.");
+                    _logger.LogWarning("El dispositivo ya est√° registrado. No se realizar√° un registro duplicado.");
                     _isDeviceRegistered = true;
                     return;
                 }
@@ -243,7 +305,7 @@ public class Worker : BackgroundService
                 // Registrar el dispositivo
                 await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
                 _isDeviceRegistered = true;
-                _logger.LogInformation("Equipo registrado con Èxito.");
+                _logger.LogInformation("Equipo registrado con √©xito.");
             }
         }
         catch (Exception ex)
@@ -260,24 +322,24 @@ public class Worker : BackgroundService
         {
             if (_hubConnection.State != HubConnectionState.Disconnected)
             {
-                _logger.LogInformation("La conexiÛn ya est· activa. No es necesario reconectar.");
+                _logger.LogInformation("La conexi√≥n ya est√° activa. No es necesario reconectar.");
                 return;
             }
 
             _logger.LogInformation("Intentando reconectar a SignalR...");
             await _hubConnection.StartAsync();
-            _logger.LogInformation("ReconexiÛn exitosa.");
+            _logger.LogInformation("Reconexi√≥n exitosa.");
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error durante la reconexiÛn a SignalR: {ex.Message}", ex);
+            _logger.LogError($"Error durante la reconexi√≥n a SignalR: {ex.Message}", ex);
         }
     }
 
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await StartConnectionAsync(); // Inicia la conexiÛn al servidor
+        await StartConnectionAsync(); // Inicia la conexi√≥n al servidor
         await registrarSuscripciones(); // Registra los eventos necesarios
 
         while (!stoppingToken.IsCancellationRequested)
@@ -288,14 +350,14 @@ public class Worker : BackgroundService
             {
                 using (var scope = _scopeFactory.CreateScope())
                 {
-                    // Verificar estado de conexiÛn y reconectar si es necesario
+                    // Verificar estado de conexi√≥n y reconectar si es necesario
                     if (_hubConnection.State != HubConnectionState.Connected)
                     {
-                        _logger.LogWarning("ConexiÛn a SignalR perdida. Intentando reconectar...");
+                        _logger.LogWarning("Conexi√≥n a SignalR perdida. Intentando reconectar...");
                         await AttemptReconnectAsync();
                     }
 
-                    // Registrar dispositivo si no est· registrado
+                    // Registrar dispositivo si no est√° registrado
                     if (!_isDeviceRegistered)
                     {
                         var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
@@ -308,17 +370,17 @@ public class Worker : BackgroundService
                     _logger.LogInformation("Consulta completada correctamente.");
                 }
 
-                // Esperar antes de la siguiente iteraciÛn
+                // Esperar antes de la siguiente iteraci√≥n
                 await Task.Delay(TimeSpan.FromMinutes(3), stoppingToken);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogWarning("OperaciÛn cancelada por solicitud.");
+                _logger.LogWarning("Operaci√≥n cancelada por solicitud.");
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error durante la ejecuciÛn del mÈtodo: {ex.Message}");
-                // Retraso din·mico en caso de error para evitar bucles r·pidos
+                _logger.LogError($"Error durante la ejecuci√≥n del m√©todo: {ex.Message}");
+                // Retraso din√°mico en caso de error para evitar bucles r√°pidos
                 await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
             }
         }
@@ -327,12 +389,12 @@ public class Worker : BackgroundService
 
 
 
-    public async Task RecibirPinRydent(string pinacceso, string clientId)
+    public async Task RecibirPinRydent(string pinacceso, string clientId, int maxIdAnamnesis)
     {
         var respuestaPin = new RespuestaPinModel();
-       
         var objPINACCESO = new TCLAVEServicios();
         var objDOCTORES = new TDATOSDOCTORESServicios();
+        var objINFORMACIONREPORTES = new TINFORMACIONREPORTESServicios();
         var objEPS = new TCODIGOS_EPSServicios();
         var objPROCEDIMIENTOS = new TCODIGOS_PROCEDIMIENTOSServicios();
         var objCONSULTAS = new TCODIGOS_CONSLUTASServicios();
@@ -351,6 +413,7 @@ public class Worker : BackgroundService
             respuestaPin.clave.CLAVE = "";
             respuestaPin.acceso = true;
             var listDoctores = await objDOCTORES.ConsultarTodos();
+            var listInformacionReporte = await objINFORMACIONREPORTES.ConsultarTodos();
             var listEps = await objEPS.ConsultarTodos();
             var listProcedimientos = await objPROCEDIMIENTOS.ConsultarTodos();
             var listConsultas = await objCONSULTAS.ConsultarTodos();
@@ -361,7 +424,7 @@ public class Worker : BackgroundService
             var listHorariosAsuntos = await objHorariosAsuntos.ConsultarTodos();
             var listFestivos = await objFestivos.ConsultarTodos();
             var listConfiguracionesRydent = await objConfiguracionesRydent.ConsultarTodos();
-            var listAnamnesisParaAgendayBuscadores = await objTAnamnesisParaAgendayBuscadores.ConsultarDatosPacientesParaCargarEnAgenda();
+            var listAnamnesisParaAgendayBuscadores = await objTAnamnesisParaAgendayBuscadores.ConsultarDatosPacientesParaCargarEnAgenda(maxIdAnamnesis);
             if (listDoctores != null && listDoctores.Count() > 0)
             {
                 respuestaPin.lstEps = listEps;
@@ -370,6 +433,7 @@ public class Worker : BackgroundService
                 respuestaPin.lstDepartamentos = listDepartamentos;
                 respuestaPin.lstCiudades = listCiudades;
                 respuestaPin.lstDoctores = listDoctores.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
+                respuestaPin.lstInformacionReporte = listInformacionReporte.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
                 respuestaPin.lstFrasesXEvolucion = lstFrasesXEvolucion;
                 respuestaPin.lstHorariosAgenda = listHorariosAgenda;
                 respuestaPin.lstHorariosAsuntos = listHorariosAsuntos;
@@ -501,36 +565,48 @@ public class Worker : BackgroundService
         await _hubConnection.InvokeAsync("RespuestaObtenerCodigosEps", clientId, JsonConvert.SerializeObject(respuestaBuscarEps));
     }
 
-    public async Task ObtenerDatosAdministrativos (string clientId, DateTime fechaInicio, DateTime fechaFin)
+    public async Task ObtenerDatosAdministrativos (string clientId, int idDoctor, DateTime fechaInicio, DateTime fechaFin)
     {
-        var objAnamnesis = new TANAMNESISServicios();
-        var objPacientesNuevos = await objAnamnesis.ConsultarTotalPacientesNuevosEntreFechas(fechaInicio.Date, fechaFin.Date);
-        var objDetalleCitas = new TDETALLECITASServicios();
-        var objPacientesAsistieron = await objDetalleCitas.ConsultarPacientesAsistieronEntreFechas(fechaInicio.Date, fechaFin.Date);
-        var objPacientesNoAsistieron = await objDetalleCitas.ConsultarPacientesNoAsistieronEntreFechas(fechaInicio.Date, fechaFin.Date);
-        var objT_Adicionales_Abonos = new T_ADICIONALES_ABONOSServicios();
-        var objPacientesAbonaron =  await objT_Adicionales_Abonos.ConsultarPacientesAbonaronEntreFechas(fechaInicio.Date, fechaFin.Date);
-        var objTotalAbonado = await objT_Adicionales_Abonos.ConsultarTotalAbonadoEntreFechas(fechaInicio.Date, fechaFin.Date);
-        var objTCitasCanceladas = new TCITASCANCELADASServicios();
-        var objCitasCanceladas = await objTCitasCanceladas.ConsultarCitasCanceladasEntreFechas(fechaInicio.Date, fechaFin.Date);
-        var objTEgresos = new TEGRESOServicios();
-        var objTotalEgresos = await objTEgresos.BuscarTotalEgresosPorFecha(fechaInicio.Date, fechaFin.Date);
-        var objTINGRESOS = new TINGRESOServicios();
-        var objTotalIngresos = await objTINGRESOS.BuscarTotalIngresosPorFecha(fechaInicio.Date, fechaFin.Date);
-        var respuestaDatosAdministrativos = new RespuestaDatosAdministrativos();
-        respuestaDatosAdministrativos.totalPacientesNuevos = objPacientesNuevos.Count;
-        respuestaDatosAdministrativos.pacientesAsistieron = objPacientesAsistieron;
-        respuestaDatosAdministrativos.pacientesNoAsistieron = objPacientesNoAsistieron;
-        respuestaDatosAdministrativos.pacientesAbonaron = objPacientesAbonaron;
-        respuestaDatosAdministrativos.citasCanceladas = objCitasCanceladas;
-        respuestaDatosAdministrativos.totalAbonos = objTotalAbonado;
-        respuestaDatosAdministrativos.lstPacientesNuevos = objPacientesNuevos;
-        decimal decimalTotalIngreos = (decimal)objTotalIngresos;
-        decimal decimalTotalEgresos = (decimal)objTotalEgresos;
+        using (var _dbcontext = new AppDbContext())
+        {
+            var objAnamnesis = new TANAMNESISServicios();
+            var objPacientesNuevos = await objAnamnesis.ConsultarTotalPacientesNuevosEntreFechas(fechaInicio.Date, fechaFin.Date);
+            var objDetalleCitas = new TDETALLECITASServicios();
+            var objPacientesAsistieron = await objDetalleCitas.ConsultarPacientesAsistieronEntreFechas(fechaInicio.Date, fechaFin.Date);
+            var objPacientesNoAsistieron = await objDetalleCitas.ConsultarPacientesNoAsistieronEntreFechas(fechaInicio.Date, fechaFin.Date);
+            var objT_Adicionales_Abonos = new T_ADICIONALES_ABONOSServicios();
+            var objPacientesAbonaron =  await objT_Adicionales_Abonos.ConsultarPacientesAbonaronEntreFechas(fechaInicio.Date, fechaFin.Date);
+            var objTotalAbonado = await objT_Adicionales_Abonos.ConsultarTotalAbonadoEntreFechas(fechaInicio.Date, fechaFin.Date);
+            var objTCitasCanceladas = new TCITASCANCELADASServicios();
+            var objCitasCanceladas = await objTCitasCanceladas.ConsultarCitasCanceladasEntreFechas(fechaInicio.Date, fechaFin.Date);
+            var objTEgresos = new TEGRESOServicios();
+            var objTotalEgresos = await objTEgresos.BuscarTotalEgresosPorFecha(fechaInicio.Date, fechaFin.Date);
+            var objTINGRESOS = new TINGRESOServicios();
+            var objTotalIngresos = await objTINGRESOS.BuscarTotalIngresosPorFecha(fechaInicio.Date, fechaFin.Date);
+            var fecha = new DateTime(1990, 1, 1);
+            //var fechaFormatted = DateTime.ParseExact(fecha.ToString("yyyy-MM-dd"), "yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var obj = await _dbcontext.P_CONSULTAR_ESTACUENTA_TOTAL(idDoctor, fecha.Date, 0);  // Convertimos a lista para manipulaci√≥n en C#
+                                                                                                               // Sumar valores espec√≠ficos
+            var totalMoraActual = obj.Sum(x => x.MORA_ACTUAL);  // Reemplaza con el nombre real de la columna
+            var totalMoraTotal = obj.Sum(x => x.MORATOTAL);    // Reemplaza con el nombre real de la columna
 
-        respuestaDatosAdministrativos.totalEgresos = decimalTotalEgresos;
-        respuestaDatosAdministrativos.totalIngresos = decimalTotalIngreos;
-        await _hubConnection.InvokeAsync("RespuestaObtenerDatosAdministrativos", clientId, JsonConvert.SerializeObject(respuestaDatosAdministrativos));
+            var respuestaDatosAdministrativos = new RespuestaDatosAdministrativos();
+            respuestaDatosAdministrativos.totalPacientesNuevos = objPacientesNuevos.Count;
+            respuestaDatosAdministrativos.pacientesAsistieron = objPacientesAsistieron;
+            respuestaDatosAdministrativos.pacientesNoAsistieron = objPacientesNoAsistieron;
+            respuestaDatosAdministrativos.pacientesAbonaron = objPacientesAbonaron;
+            respuestaDatosAdministrativos.citasCanceladas = objCitasCanceladas;
+            respuestaDatosAdministrativos.totalAbonos = objTotalAbonado;
+            respuestaDatosAdministrativos.lstPacientesNuevos = objPacientesNuevos;
+            decimal decimalTotalIngreos = (decimal)objTotalIngresos;
+            decimal decimalTotalEgresos = (decimal)objTotalEgresos;
+
+            respuestaDatosAdministrativos.totalEgresos = decimalTotalEgresos;
+            respuestaDatosAdministrativos.totalIngresos = decimalTotalIngreos;
+            respuestaDatosAdministrativos.moraTotal = (decimal)totalMoraActual;
+            respuestaDatosAdministrativos.totalCartera = (decimal)totalMoraTotal;
+            await _hubConnection.InvokeAsync("RespuestaObtenerDatosAdministrativos", clientId, JsonConvert.SerializeObject(respuestaDatosAdministrativos));
+        }
     }
 
     public async Task ConsultarEstadoCuenta (string clientId, string modeloDatosParaConsultarEstadoCuenta)
@@ -759,7 +835,162 @@ public class Worker : BackgroundService
         }
         await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, resultado);
     }
-    public async Task GuardarDatosEvolucion(string clientId, string datosEvolucion)
+
+    public async Task ObtenerFacturasPorIdEntreFechas(string clientId, string modeloDatosParaConsultarFacturasEntreFechas)
+    {
+        var settings = new JsonSerializerSettings();
+        var objDatosParaConsultarFacturasEntreFechas = JsonConvert.DeserializeObject<RespuestaConsultarFacturasEntreFechas>(modeloDatosParaConsultarFacturasEntreFechas, settings);
+        var objAdicionalesAbonos = new T_ADICIONALES_ABONOSServicios();
+        var objRespuestaConsultarFacturasEntreFechas = new List<RespuestaConsultarFacturasEntreFechas>();
+        objRespuestaConsultarFacturasEntreFechas = await objAdicionalesAbonos.ConsultarFacturasPorIdEntreFechas(objDatosParaConsultarFacturasEntreFechas.IDANAMNESIS ?? 0, objDatosParaConsultarFacturasEntreFechas.FECHAINI ?? DateTime.Today, objDatosParaConsultarFacturasEntreFechas.FECHAFIN ?? DateTime.Today);
+        
+        await _hubConnection.InvokeAsync("RespuestaObtenerFacturasPorIdEntreFechas", clientId, JsonConvert.SerializeObject(objRespuestaConsultarFacturasEntreFechas));
+    }
+
+
+    /*public async Task GenerarRips(string clientId, string objGenerarRips)
+    {
+        var objGenerarRipsModel = JsonConvert.DeserializeObject<GenerarRipsModel>(objGenerarRips);
+        var infoReportes = _lnRips.InformacionReportesXId(objGenerarRipsModel.IDREPORTE);
+        var ripsModel = _lnRips.ConsultarRips(
+                                             objGenerarRipsModel.FECHAINI,
+                                             objGenerarRipsModel.FECHAFIN,
+                                             objGenerarRipsModel.EPS,
+                                             objGenerarRipsModel.FACTURA,
+                                             objGenerarRipsModel.IDREPORTE,
+                                             objGenerarRipsModel.IDDOCTOR,
+                                             objGenerarRipsModel.EXTRANJERO
+                                            );
+        
+        ripsModel = _lnRips.MapearRipsSinFactura(ripsModel, (infoReportes.CONFACTURA ?? 0) == 1);
+        var jsonRIps = JsonConvert.SerializeObject(ripsModel);
+        string respuesta = jsonRIps ;
+        var respuestaSerializadaComprimida = ArchivosHelper.CompressString(respuesta);
+        await _hubConnection.InvokeAsync("RespuestaGenerarRips", clientId, respuestaSerializadaComprimida);// Notificar a Angular a trav√©s de SignalR
+    }*/
+
+    public async Task GenerarRips(string clientId, int identificador, string objGenerarRips)
+    {
+        // Deserializaci√≥n en un hilo separado para evitar bloqueos
+        var objGenerarRipsModel = await Task.Run(() =>
+            JsonConvert.DeserializeObject<GenerarRipsModel>(objGenerarRips));
+
+        // Estas funciones son s√≠ncronas, por lo que NO debes usarlas con `await`
+        var infoReportes = _lnRips.InformacionReportesXId(objGenerarRipsModel.IDREPORTE);
+        var ripsModel = _lnRips.ConsultarRips(
+                                        objGenerarRipsModel.FECHAINI,
+                                        objGenerarRipsModel.FECHAFIN,
+                                        objGenerarRipsModel.EPS,
+                                        objGenerarRipsModel.FACTURA,
+                                        objGenerarRipsModel.IDREPORTE,
+                                        objGenerarRipsModel.IDDOCTOR,
+                                        objGenerarRipsModel.EXTRANJERO
+                                    );
+
+        // Mapear datos
+        ripsModel = _lnRips.MapearRipsSinFactura(ripsModel, (infoReportes.CONFACTURA ?? 0) == 1);
+
+        // Serializaci√≥n optimizada
+        var jsonRips = JsonConvert.SerializeObject(ripsModel);
+
+        // Comprimir el JSON
+        string respuesta = jsonRips;
+
+        // Notificar a Angular a trav√©s de SignalR
+        await _hubConnection.InvokeAsync("RespuestaGenerarRips", clientId, respuesta);
+        
+    }
+
+    
+    // Conversor para manejar TimeSpan en JSON
+    public class TimeSpanConverterJson : JsonConverter
+    {
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            writer.WriteValue(((TimeSpan)value).ToString(@"hh\:mm\:ss"));
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            return TimeSpan.TryParse(reader.Value?.ToString(), out var timeSpan) ? timeSpan : TimeSpan.Zero;
+        }
+
+        public override bool CanConvert(Type objectType) => objectType == typeof(TimeSpan);
+    }
+
+
+    public async Task PresentarRips(string clientId, int identificador, string objPresentarRips)
+    {
+        var objPresentarRipsModel = JsonConvert.DeserializeObject<GenerarRipsModel>(objPresentarRips);
+        var infoReportes = _lnRips.InformacionReportesXId(objPresentarRipsModel.IDREPORTE);
+        var token = _lnRips.obtenerTokenRips(infoReportes);
+        var ripsModel = _lnRips.ConsultarRips(
+                                             objPresentarRipsModel.FECHAINI,
+                                             objPresentarRipsModel.FECHAFIN,
+                                             objPresentarRipsModel.EPS,
+                                             objPresentarRipsModel.FACTURA,
+                                             objPresentarRipsModel.IDREPORTE,
+                                             objPresentarRipsModel.IDDOCTOR,
+                                             objPresentarRipsModel.EXTRANJERO
+                                            );
+        var result = _lnRips.CargarRipsSinFactura(ripsModel, token, (infoReportes.CONFACTURA ?? 0) == 1);
+       
+        var jsonRips = JsonConvert.SerializeObject(result);
+        string respuesta = jsonRips;
+        await _hubConnection.InvokeAsync("RespuestaPresentarRips", clientId, respuesta);// Notificar a Angular a trav√©s de SignalR
+    }
+
+    
+    public async Task ObtenerFacturasCreadas(string clientId, string Factura)
+    {
+        try
+        {
+            // Instanciar el repositorio
+            var repo = new Adicionales_Abonos_Dian();
+
+            // Obtener las facturas pendientes
+            var facturasCreadas = repo.ListarFacturasCreadas(Factura);
+
+            // Serializar a JSON
+            var jsonFacturasCreadas = JsonConvert.SerializeObject(facturasCreadas);
+
+            // Enviar respuesta a trav√©s de SignalR
+            await _hubConnection.InvokeAsync("RespuestaObtenerFacturasCreadas", clientId, jsonFacturasCreadas);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al obtener facturas pendientes: {ex.Message}");
+        }
+    }
+
+	public async Task ObtenerFacturasPendientes(string clientId)
+	{
+		try
+		{
+			// Instanciar el repositorio
+			var repo = new Adicionales_Abonos_Dian();
+
+			// Obtener las facturas pendientes
+			var facturasPendientes = repo.listarFacturasPendientes();
+
+			// Serializar a JSON
+			var jsonFacturasPendientes = JsonConvert.SerializeObject(facturasPendientes);
+
+			// Enviar respuesta a trav√©s de SignalR
+			await _hubConnection.InvokeAsync("RespuestaObtenerFacturasPendientes", clientId, jsonFacturasPendientes);
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"Error al obtener facturas pendientes: {ex.Message}");
+		}
+	}
+
+
+
+
+
+
+	public async Task GuardarDatosEvolucion(string clientId, string datosEvolucion)
     {
         try
         {
@@ -807,7 +1038,7 @@ public class Worker : BackgroundService
             var objTratamientosServicios = new TTRATAMIENTOServicios();
             var archivosHelper = new ArchivosHelper();
             var resultado = await objDatosPersonalesServicios.Agregar(objDatosPersonales);
-            // Verificar si la imagen es v·lida antes de convertir
+            // Verificar si la imagen es v√°lida antes de convertir
             if (!string.IsNullOrEmpty(objFotoPaciente) && EsBase64Valido(objFotoPaciente))
             {
                 var fotoPaciente = new TFOTOSFRONTALES
@@ -840,7 +1071,7 @@ public class Worker : BackgroundService
 
     }
 
-    // MÈtodo para validar Base64 antes de convertir
+    // M√©todo para validar Base64 antes de convertir
     private bool EsBase64Valido(string base64String)
     {
         Span<byte> buffer = new Span<byte>(new byte[base64String.Length]);
@@ -926,44 +1157,44 @@ public class Worker : BackgroundService
 
 
         public async Task<RespuestaConsultarPorDiaYPorUnidadModel> ConsultarPorDiaYPorUnidad(string clientId, int silla, DateTime fecha)
-    {
-        var objHorariosAgenda = new THORARIOSAGENDAServicios();
-        var objRespuestaConsultarPorDiaYPorUnidad = new P_AGENDA1();
-        var objRespuestaConsultarHorariosSilla = await objHorariosAgenda.ConsultarPorId(silla); 
-        var sillaStr=silla.ToString();
-       
-        var intervalo = objRespuestaConsultarHorariosSilla.INTERVALO;
-        using (var _dbcontext = new AppDbContext())
         {
-            if (intervalo == null || intervalo < 0)
+            var objHorariosAgenda = new THORARIOSAGENDAServicios();
+            var objRespuestaConsultarPorDiaYPorUnidad = new P_AGENDA1();
+            var objRespuestaConsultarHorariosSilla = await objHorariosAgenda.ConsultarPorId(silla); 
+            var sillaStr=silla.ToString();
+       
+            var intervalo = objRespuestaConsultarHorariosSilla.INTERVALO;
+            using (var _dbcontext = new AppDbContext())
             {
-                intervalo = 15;
+                if (intervalo == null || intervalo < 0)
+                {
+                    intervalo = 15;
 
-            }
-            var obj = await _dbcontext.P_AGENDA1(sillaStr, fecha.Date, "1", objRespuestaConsultarHorariosSilla.HORAINICIAL, objRespuestaConsultarHorariosSilla.HORAFINAL, intervalo ?? 0, "", "");
-            var modelo = new RespuestaConsultarPorDiaYPorUnidadModel();
-           //---------------------------validar si el dia seleccoionado es festivo----------------------//
-            var Festivo = new TFESTIVOSServicios();
-            var objRespuestaBuscarFestivo = await Festivo.ConsultarPorFecha(fecha.Date);
-            modelo.lstP_AGENDA1 = obj;
-            if (objRespuestaBuscarFestivo !=  null && objRespuestaBuscarFestivo.FECHA > DateTime.MinValue)
-            {
-                modelo.esFestivo = true;
-            }
-            else
-            {
-                modelo.esFestivo = false;
-            }
-            //-----------------------------------------------------------------------------------------------//
-            modelo.terminoRefrescar = true;
-            var modeloSerializado = JsonConvert.SerializeObject(modelo);
-            var modeloSerializadoComprimido = ArchivosHelper.CompressString(modeloSerializado);
-            await _hubConnection.InvokeAsync("RespuestaObtenerConsultaPorDiaYPorUnidad", clientId, modeloSerializadoComprimido);
-            return modelo == null ? new RespuestaConsultarPorDiaYPorUnidadModel() : modelo;
+                }
+                var obj = await _dbcontext.P_AGENDA1(sillaStr, fecha.Date, "1", objRespuestaConsultarHorariosSilla.HORAINICIAL, objRespuestaConsultarHorariosSilla.HORAFINAL, intervalo ?? 0, "", "");
+                var modelo = new RespuestaConsultarPorDiaYPorUnidadModel();
+               //---------------------------validar si el dia seleccoionado es festivo----------------------//
+                var Festivo = new TFESTIVOSServicios();
+                var objRespuestaBuscarFestivo = await Festivo.ConsultarPorFecha(fecha.Date);
+                modelo.lstP_AGENDA1 = obj;
+                if (objRespuestaBuscarFestivo !=  null && objRespuestaBuscarFestivo.FECHA > DateTime.MinValue)
+                {
+                    modelo.esFestivo = true;
+                }
+                else
+                {
+                    modelo.esFestivo = false;
+                }
+                //-----------------------------------------------------------------------------------------------//
+                modelo.terminoRefrescar = true;
+                var modeloSerializado = JsonConvert.SerializeObject(modelo);
+                var modeloSerializadoComprimido = ArchivosHelper.CompressString(modeloSerializado);
+                await _hubConnection.InvokeAsync("RespuestaObtenerConsultaPorDiaYPorUnidad", clientId, modeloSerializadoComprimido);
+                return modelo == null ? new RespuestaConsultarPorDiaYPorUnidadModel() : modelo;
             
             
+            }
         }
-    }
 
     
     private async Task<string> validacionesExclullentes(string clientId, string datosAgenda)
@@ -995,7 +1226,7 @@ public class Worker : BackgroundService
         TimeSpan horaCita = TimeSpan.Parse(hora);
         int duracion = int.Parse(minutos);
 
-        // Agrega la duraciÛn a la hora de la cita
+        // Agrega la duraci√≥n a la hora de la cita
         TimeSpan horaFinal = horaCita.Add(TimeSpan.FromMinutes(duracion));
 
         // Convierte la hora final de vuelta a una cadena de hora
@@ -1228,7 +1459,7 @@ public class Worker : BackgroundService
 
                     try
                     {
-                        // Consultar las citas de forma asÌncrona
+                        // Consultar las citas de forma as√≠ncrona
                         var listadoCitasParaEnviarMensaje = await objDetallesCitasServicios
                             .ConsultarPorFechaySilla(enviarMensajeRecordarCita.fecha.Date, enviarMensajeRecordarCita.silla);
 
@@ -1243,10 +1474,10 @@ public class Worker : BackgroundService
                         {
                             var cita = listadoCitasParaEnviarMensaje[i];
 
-                            // Validar si ya se enviÛ el mensaje (COLOR ya es "VERDE")
+                            // Validar si ya se envi√≥ el mensaje (COLOR ya es "VERDE")
                             if (cita.CEDULA == "SI")
                             {
-                                Console.WriteLine($"Mensaje ya enviado para la cita con ID: {cita.ID}. Se omite el envÌo.");
+                                Console.WriteLine($"Mensaje ya enviado para la cita con ID: {cita.ID}. Se omite el env√≠o.");
                                 continue; // Pasar a la siguiente cita
                             }
 
@@ -1265,12 +1496,12 @@ public class Worker : BackgroundService
                             }
                             else
                             {
-                                templateNombre = "Hola {0}, te recordamos que tu cita est· agendada para el dia {1} a las {2} con {3} .";
+                                templateNombre = "Hola {0}, te recordamos que tu cita est√° agendada para el dia {1} a las {2} con {3} .";
                             }  
                             var parametros = new List<string>
                             {
                                 cita.NOMBRE,
-                                cita.FECHA?.ToString("dd/MM/yyyy"), // Formato dÌa/mes/aÒo
+                                cita.FECHA?.ToString("dd/MM/yyyy"), // Formato d√≠a/mes/a√±o
                                 cita.HORA.HasValue ? DateTime.Today.Add(cita.HORA.Value)
                                 .ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture): "Hora no especificada",
                                 cita.DOCTOR
@@ -1328,7 +1559,7 @@ public class Worker : BackgroundService
 
     public static string ValidarYAgregarPrefijo(string numero)
     {
-        // Define la expresiÛn regular para n˙meros celulares v·lidos en Colombia (10 dÌgitos y empiezan con 3)
+        // Define la expresi√≥n regular para n√∫meros celulares v√°lidos en Colombia (10 d√≠gitos y empiezan con 3)
         var regex = new Regex(@"^3\d{9}$");
 
         // Remueve espacios o caracteres adicionales
@@ -1337,7 +1568,7 @@ public class Worker : BackgroundService
         // Caso 1: Si ya tiene el prefijo +57
         if (numero.StartsWith("+57"))
         {
-            // Verifica que el resto del n˙mero sea v·lido
+            // Verifica que el resto del n√∫mero sea v√°lido
             var numeroSinPrefijo = numero.Substring(3); // Remueve +57
             return regex.IsMatch(numeroSinPrefijo) ? numero : null;
         }
@@ -1347,18 +1578,18 @@ public class Worker : BackgroundService
             var numeroSinPrefijo = numero.Substring(2); // Remueve 57
             if (regex.IsMatch(numeroSinPrefijo))
             {
-                // Agrega el prefijo "+" si es v·lido
+                // Agrega el prefijo "+" si es v√°lido
                 return $"+{numero}";
             }
         }
-        // Caso 3: N˙mero sin prefijo 57
+        // Caso 3: N√∫mero sin prefijo 57
         else if (regex.IsMatch(numero))
         {
-            // Agrega el prefijo +57 si es v·lido
+            // Agrega el prefijo +57 si es v√°lido
             return $"+57{numero}";
         }
 
-        // Si no es v·lido, retorna null
+        // Si no es v√°lido, retorna null
         return null;
     }
 
@@ -1450,7 +1681,7 @@ public class Worker : BackgroundService
                         {
                             lstRespuestaConfirmacionesPedidas.Add(new ConfirmacionesPedidasModel()
                             {
-                                mensaje = "El paciente ya tiene cita asignada el dia "+ fecha.Value.Date.ToString("dd/MM/yyyy") + " desea continuar asignando Èsta cita?",
+                                mensaje = "El paciente ya tiene cita asignada el dia "+ fecha.Value.Date.ToString("dd/MM/yyyy") + " desea continuar asignando √©sta cita?",
                                 nombreConfirmacion = "CITA_REPETIDA",
                                 pedirConfirmar = true,
                                 esMensajeRestrictivo = false
@@ -1585,7 +1816,7 @@ public class Worker : BackgroundService
                     var parametros = new List<string>
                     {
                         objDetalleCitas.NOMBRE,
-                        objDetalleCitas.FECHA?.ToString("dd/MM/yyyy"), // Formato dÌa/mes/aÒo
+                        objDetalleCitas.FECHA?.ToString("dd/MM/yyyy"), // Formato d√≠a/mes/a√±o
                         objDetalleCitas.HORA.HasValue ? DateTime.Today.Add(objDetalleCitas.HORA.Value)
                         .ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture): "Hora no especificada",
                         //objAgenda.lstDetallaCitas[0].HORA?.ToString(@"hh\:mm"),      // Formato de hora "hh:mm"
@@ -1708,7 +1939,7 @@ public class Worker : BackgroundService
                 var parametros = new List<string>
                 {
                     objAgenda.lstDetallaCitas[0].NOMBRE,
-                    objAgenda.lstDetallaCitas[0].FECHA?.ToString("dd/MM/yyyy"), // Formato dÌa/mes/aÒo
+                    objAgenda.lstDetallaCitas[0].FECHA?.ToString("dd/MM/yyyy"), // Formato d√≠a/mes/a√±o
                     objAgenda.lstDetallaCitas[0].HORA.HasValue ? DateTime.Today.Add(objAgenda.lstDetallaCitas[0].HORA.Value)
                     .ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture): "Hora no especificada",
                     //objAgenda.lstDetallaCitas[0].HORA?.ToString(@"hh\:mm"),      // Formato de hora "hh:mm"
@@ -1801,13 +2032,13 @@ public class Worker : BackgroundService
         if (tipo == 1)
         {
             var recorteFirmaPaciente = archivosHelper.recortarImganFromBytes(resultadoFirma.FIRMA, new Rectangle(0, 0, 1364, 225));
-            var imagenReducida = archivosHelper.ReducirTamaÒoImagen(recorteFirmaPaciente, 30, 10);
+            var imagenReducida = archivosHelper.ReducirTama√±oImagen(recorteFirmaPaciente, 30, 10);
             return archivosHelper.obtenerBase64ConPrefijo(imagenReducida);
         }
         else
         {
             var recorteFirmaDoctor = archivosHelper.recortarImganFromBytes(resultadoFirma.FIRMA, new Rectangle(0, (482 - 215), 1364, 215));
-            var imagenReducida = archivosHelper.ReducirTamaÒoImagen(recorteFirmaDoctor, 30, 10);
+            var imagenReducida = archivosHelper.ReducirTama√±oImagen(recorteFirmaDoctor, 30, 10);
             return archivosHelper.obtenerBase64ConPrefijo(imagenReducida);
         }   
        

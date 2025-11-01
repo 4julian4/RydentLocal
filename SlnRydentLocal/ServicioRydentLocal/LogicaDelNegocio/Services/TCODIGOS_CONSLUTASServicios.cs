@@ -22,7 +22,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TCODIGOS_CONSLUTAS.ToListAsync();
+                var obj = await _dbcontext.TCODIGOS_CONSLUTAS.AsNoTracking().ToListAsync();
                 return obj == null ? new List<TCODIGOS_CONSLUTAS>() : obj;
             }
         }

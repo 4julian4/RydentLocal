@@ -63,7 +63,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TEVOLUCION.FirstOrDefaultAsync(x => x.IDEVOLUCION == IDEVOLUCION);
+                var obj = await _dbcontext.TEVOLUCION.AsNoTracking().FirstOrDefaultAsync(x => x.IDEVOLUCION == IDEVOLUCION);
                 return obj == null ? new TEVOLUCION() : obj;
             }
         }
@@ -72,7 +72,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TEVOLUCION.Where(x => x.IDEVOLUSECUND == IDEVOLUSECUND).OrderByDescending(x => x.FECHA).ThenByDescending(x => x.HORA).FirstOrDefaultAsync();
+                var obj = await _dbcontext.TEVOLUCION.AsNoTracking().Where(x => x.IDEVOLUSECUND == IDEVOLUSECUND).OrderByDescending(x => x.FECHA).ThenByDescending(x => x.HORA).FirstOrDefaultAsync();
                 return obj == null ? new TEVOLUCION() : obj;
             }
         }
@@ -84,6 +84,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 var obj = await _dbcontext.TEVOLUCION
                 .Where(x => x.IDEVOLUSECUND == IDEVOLUSECUND)
                 .OrderByDescending(x => x.FECHA)
+                .AsNoTracking()
                 .ToListAsync();
                 return obj == null ? new List<TEVOLUCION>() : obj;
             }
@@ -93,8 +94,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TEVOLUCION
-                .FirstOrDefaultAsync(x => x.IDEVOLUSECUND == IDEVOLUSECUND && x.FECHA == FECHA && x.HORA == HORA);
+                var obj = await _dbcontext.TEVOLUCION.AsNoTracking().FirstOrDefaultAsync(x => x.IDEVOLUSECUND == IDEVOLUSECUND && x.FECHA == FECHA && x.HORA == HORA);
 
                 return obj ?? new TEVOLUCION();
             }

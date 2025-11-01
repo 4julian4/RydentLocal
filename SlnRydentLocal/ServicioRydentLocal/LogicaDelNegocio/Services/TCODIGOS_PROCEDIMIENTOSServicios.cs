@@ -25,7 +25,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 try
                 {
-                    var obj = await _dbcontext.TCODIGOS_PROCEDIMIENTOS.ToListAsync();
+                    var obj = await _dbcontext.TCODIGOS_PROCEDIMIENTOS.AsNoTracking().ToListAsync();
                     return obj == null ? new List<TCODIGOS_PROCEDIMIENTOS>() : obj;
                 }
                 catch (Exception ex)

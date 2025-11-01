@@ -11,6 +11,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos
     {
         public TCLAVE clave { set; get; }=new TCLAVE();
         public List<ListadoItemModel> lstDoctores { set; get; } = new List<ListadoItemModel>();
+        public List<ListadoItemModel> lstInformacionReporte { set; get; } = new List<ListadoItemModel>();
         public List<TCODIGOS_EPS> lstEps { set; get; } = new List<TCODIGOS_EPS>();
         public List<TCODIGOS_CONSLUTAS> lstConsultas { set; get; } = new List<TCODIGOS_CONSLUTAS>();
         public List<TCODIGOS_PROCEDIMIENTOS> lstProcedimientos { set; get; } = new List<TCODIGOS_PROCEDIMIENTOS>();

@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos.Rips;
 using System.Data;
 using System.Data.SqlClient;
 
@@ -52,6 +53,24 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.T_ADICIONALES_ABONOS.Where(x => x.TIPO == 1 && x.FECHA >= fechaInicio && x.FECHA <= fechaFin).CountAsync();
+                return obj;
+            }
+        }
+
+        public async Task<List<RespuestaConsultarFacturasEntreFechas>> ConsultarFacturasPorIdEntreFechas(int idAnamnesis, DateTime fechaInicio, DateTime fechaFin)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                var obj = await _dbcontext.T_ADICIONALES_ABONOS.Where(x => x.ID == idAnamnesis &&  x.FECHA >= fechaInicio && x.FECHA <= fechaFin)
+                                                                .Select(x => new RespuestaConsultarFacturasEntreFechas
+                                                                {
+                                                                    IDANAMNESIS = x.ID,
+                                                                    FACTURA = x.FACTURA,
+                                                                    FECHA = x.FECHA,
+                                                                    DESCRIPCION = x.DESCRIPCION
+                                                                    // Asegúrate de mapear correctamente las propiedades
+                                                                })
+                                                                .ToListAsync(); 
                 return obj;
             }
         }
@@ -324,5 +343,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<DateTime> ConsultarUltimaFechaAbono(int id, int fase, int idDoctor);
         Task<List<RespuestaSaldoPorDoctor>> ConsultarSaldoPorDoctor(int idanamnesis);
         Task Borrar(int ID, int IDENTIFICADOR, int IDDOCTOR, int FASE);
+        Task<List<RespuestaConsultarFacturasEntreFechas>> ConsultarFacturasPorIdEntreFechas(int idAnamnesis, DateTime fechaInicio, DateTime fechaFin);
     }
 }
