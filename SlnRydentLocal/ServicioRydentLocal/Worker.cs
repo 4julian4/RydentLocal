@@ -11,8 +11,12 @@ using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnes
 using ServicioRydentLocal.LogicaDelNegocio.Facturatech;
 using ServicioRydentLocal.LogicaDelNegocio.Helpers;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos.Dataico.Resultados;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos.Dataico.Solicitudes;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Rips;
+using ServicioRydentLocal.LogicaDelNegocio.Repositorio;
 using ServicioRydentLocal.LogicaDelNegocio.Services;
+using ServicioRydentLocal.LogicaDelNegocio.Services.Dataico;
 using ServicioRydentLocal.LogicaDelNegocio.Services.Rips;
 using ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis;
 using SixLabors.ImageSharp;
@@ -30,22 +34,24 @@ public class Worker : BackgroundService
     private HubConnection _hubConnection;
     private readonly IConfiguration _configuration;
     private readonly LNRips _lnRips;
+	private readonly ApiIntermediaClient _api;
 
-    // private readonly AppDbContext _dbContext;
+	// private readonly AppDbContext _dbContext;
 
-    private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1); //esto es reciente 16/08/24
+	private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1); //esto es reciente 16/08/24
 
 
 
 
 
     // Constructor: Recibe una instancia de ILogger para realizar el registro de eventos.
-    public Worker(ILogger<Worker> logger, IServiceScopeFactory scopeFactory, IConfiguration configuration)
+    public Worker(ILogger<Worker> logger, IServiceScopeFactory scopeFactory, IConfiguration configuration, ApiIntermediaClient api)
     {
         _logger = logger;
         _scopeFactory = scopeFactory;
         _configuration = configuration;
-        _lnRips = new LNRips(_configuration); // ✅ Pasamos IConfiguration
+		_api = api;
+		_lnRips = new LNRips(_configuration); // ✅ Pasamos IConfiguration
         string url = _configuration.GetValue<string>("signalRServer:url");
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(url)
@@ -215,6 +221,11 @@ public class Worker : BackgroundService
 		_hubConnection.On<string, string>("ObtenerFacturasCreadas", async (clientId, Factura) =>
 		{
 			await ObtenerFacturasCreadas(clientId, Factura);
+		});
+
+		_hubConnection.On<string, string>("PresentarFacturasEnDian", async (clienteIdDestino, payloadJson) =>
+		{
+			await PresentarFacturasEnDian(clienteIdDestino, payloadJson);
 		});
 
 		_hubConnection.On<string>("ObtenerCodigosEps", async (clientId) =>
@@ -945,17 +956,20 @@ public class Worker : BackgroundService
     {
         try
         {
-            // Instanciar el repositorio
-            var repo = new Adicionales_Abonos_Dian();
-
-            // Obtener las facturas pendientes
-            var facturasCreadas = repo.ListarFacturasCreadas(Factura);
+			// Instanciar el repositorio
+			
+			var repo = new ServicioRydentLocal.LogicaDelNegocio.Facturatech.Adicionales_Abonos_Dian();
+			// Obtener las facturas pendientes
+			var facturasCreadas = repo.ListarFacturasCreadas(Factura);
 
             // Serializar a JSON
             var jsonFacturasCreadas = JsonConvert.SerializeObject(facturasCreadas);
 
-            // Enviar respuesta a través de SignalR
-            await _hubConnection.InvokeAsync("RespuestaObtenerFacturasCreadas", clientId, jsonFacturasCreadas);
+			//comprimir respuesta
+			var jsonFacturasCreadasComprimido = ArchivosHelper.CompressString(jsonFacturasCreadas);
+
+			// Enviar respuesta a través de SignalR
+			await _hubConnection.InvokeAsync("RespuestaObtenerFacturasCreadas", clientId, jsonFacturasCreadasComprimido);
         }
         catch (Exception ex)
         {
@@ -968,7 +982,7 @@ public class Worker : BackgroundService
 		try
 		{
 			// Instanciar el repositorio
-			var repo = new Adicionales_Abonos_Dian();
+			var repo = new ServicioRydentLocal.LogicaDelNegocio.Facturatech.Adicionales_Abonos_Dian();
 
 			// Obtener las facturas pendientes
 			var facturasPendientes = repo.listarFacturasPendientes();
@@ -976,8 +990,11 @@ public class Worker : BackgroundService
 			// Serializar a JSON
 			var jsonFacturasPendientes = JsonConvert.SerializeObject(facturasPendientes);
 
+            //comprimir respuesta
+            var jsonFacturasPendientesComprimido = ArchivosHelper.CompressString(jsonFacturasPendientes);
+
 			// Enviar respuesta a través de SignalR
-			await _hubConnection.InvokeAsync("RespuestaObtenerFacturasPendientes", clientId, jsonFacturasPendientes);
+			await _hubConnection.InvokeAsync("RespuestaObtenerFacturasPendientes", clientId, jsonFacturasPendientesComprimido);
 		}
 		catch (Exception ex)
 		{
@@ -985,9 +1002,102 @@ public class Worker : BackgroundService
 		}
 	}
 
+	public async Task PresentarFacturasEnDian(string clienteIdDestino, string payloadJson, CancellationToken ct = default)
+	{
+		PresentarFacturasPayload payload;
+		try
+		{
+			payload = JsonConvert.DeserializeObject<PresentarFacturasPayload>(payloadJson) ?? new PresentarFacturasPayload();
+		}
+		catch (Exception ex)
+		{
+			await EmitResumenAsync(clienteIdDestino, new ResumenPresentacionLote
+			{
+				total = 0,
+				ok = 0,
+				fail = 1,
+				resultados = new List<ResultadoPresentacionItem>
+			{
+				new ResultadoPresentacionItem { ok = false, mensaje = "Payload inválido: " + ex.Message }
+			}
+			}, ct);
+			return;
+		}
+
+		var resultados = new List<ResultadoPresentacionItem>();
+		int okCount = 0;
+
+		using var scope = _scopeFactory.CreateScope();
+		var repo = scope.ServiceProvider.GetRequiredService<FacturacionSaludRepository>();
+
+		foreach (var item in payload.items)
+		{
+			var resItem = new ResultadoPresentacionItem
+			{
+				idRelacion = item.idRelacion,
+				factura = item.factura,
+				codigoPrestador = item.codigoPrestador
+			};
+
+			try
+			{
+				var dto = await repo.BuildHealthInvoiceDtoSinAporteAsync(item.idRelacion, ct);
+				var bodyJson = JsonConvert.SerializeObject(dto);
+
+				// 👇 TIPADO EXPLÍCITO: evita el error de inferencia
+				(bool ok, string mensaje, string? externalId) =
+					await _api.PostHealthInvoiceAsync(item.codigoPrestador, bodyJson, ct);
+
+				resItem.ok = ok;
+				resItem.mensaje = ok ? "ENVIADA" : mensaje;
+				resItem.externalId = externalId;
+				if (ok) okCount++;
+
+				await EmitProgresoAsync(clienteIdDestino, new
+				{
+					documentRef = item.idRelacion,
+					status = ok ? "ENVIADA" : "ERROR",
+					mensaje = resItem.mensaje,
+					externalId
+				}, ct);
+			}
+			catch (Exception ex)
+			{
+				resItem.ok = false;
+				resItem.mensaje = "Excepción: " + ex.Message;
+
+				await EmitProgresoAsync(clienteIdDestino, new
+				{
+					documentRef = item.idRelacion,
+					status = "ERROR",
+					mensaje = resItem.mensaje
+				}, ct);
+			}
+
+			resultados.Add(resItem);
+		}
+
+		await EmitResumenAsync(clienteIdDestino, new ResumenPresentacionLote
+		{
+			total = resultados.Count,
+			ok = okCount,
+			fail = resultados.Count - okCount,
+			resultados = resultados
+		}, ct);
+	}
 
 
+	private async Task EmitProgresoAsync(string clienteIdDestino, object progresoObj, CancellationToken ct)
+	{
+		var progresoJson = JsonConvert.SerializeObject(progresoObj);
+		await _hubConnection.InvokeAsync("RespuestaProgresoPresentacion", clienteIdDestino, progresoJson, ct);
+	}
 
+	private async Task EmitResumenAsync(string clienteIdDestino, ResumenPresentacionLote resumen, CancellationToken ct)
+	{
+		var resumenJson = JsonConvert.SerializeObject(resumen);
+		await _hubConnection.InvokeAsync("RespuestaPresentarFacturasEnDian", clienteIdDestino, resumenJson, ct);
+	}
 
 
 	public async Task GuardarDatosEvolucion(string clientId, string datosEvolucion)

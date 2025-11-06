@@ -36,7 +36,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.SP
         public string NOMBRES { get; set; } = "";
         public string APELLIDOS { get; set; } = "";
         public string NIT { get; set; } = "";
-        public DateTime HORAFACTURA { get; set; }
+        public TimeSpan? HORAFACTURA { get; set; }
         public string CORREO_PACIENTE { get; set; } = "";
         public decimal VALORIVA { get; set; }
         public decimal PORCENTAJEIVA { get; set; }
