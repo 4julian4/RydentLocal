@@ -67,17 +67,31 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS_TEXTO == IDANAMNESIS_TEXTO);
+                var obj = await _dbcontext.TANAMNESIS.AsNoTracking().FirstOrDefaultAsync(x => x.IDANAMNESIS_TEXTO == IDANAMNESIS_TEXTO);
                 return obj == null ? new TANAMNESIS() : obj;
             }
         }
 
-        public async Task<int> ConsultarPorIdTextoElIdAnamnesis(string IDANAMNESIS_TEXTO)
+        /*public async Task<int> ConsultarPorIdTextoElIdAnamnesis(string IDANAMNESIS_TEXTO)
         {
             using (var _dbcontext = new AppDbContext())
             {
                 var obj = await _dbcontext.TANAMNESIS.FirstOrDefaultAsync(x => x.IDANAMNESIS_TEXTO == IDANAMNESIS_TEXTO);
                 return obj == null ? 0 : obj.IDANAMNESIS;
+            }
+        }*/
+
+        public async Task<int> ConsultarPorIdTextoElIdAnamnesis(string IDANAMNESIS_TEXTO)
+        {
+            using (var _dbcontext = new AppDbContext())
+            {
+                // Solo seleccionamos el IDANAMNESIS para evitar cargar todos los campos.
+                var obj = await _dbcontext.TANAMNESIS
+                                          .AsNoTracking()
+                                          .Where(x => x.IDANAMNESIS_TEXTO == IDANAMNESIS_TEXTO)
+                                          .Select(x => x.IDANAMNESIS)
+                                          .FirstOrDefaultAsync();
+                return obj;  // Si no se encuentra, FirstOrDefaultAsync devuelve 0.
             }
         }
 
@@ -85,11 +99,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         {
             using (var _dbcontext = new AppDbContext())
             {
-                var obj = await _dbcontext.TTRATAMIENTO.Where(x => x.ID_DOCTOR == IDDOCTOR).Select(x => x.IDTRATAMIENTO).Distinct().ToListAsync();
+                var obj = await _dbcontext.TTRATAMIENTO.AsNoTracking().Where(x => x.ID_DOCTOR == IDDOCTOR).Select(x => x.IDTRATAMIENTO).Distinct().ToListAsync();
                 return obj == null ? 0 : obj.Count();
             }
         }
 
+        /* funciona pero vamos a cambiarlo para probar velocidad
         public async Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda()
         {
             using (var _dbcontext = new AppDbContext())
@@ -116,7 +131,37 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 }
             }
 
+        }*/
+
+        public async Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda(int? maxIdLocal)
+        {
+            try
+            {
+                using var _dbcontext = new AppDbContext();
+
+                return await _dbcontext.TANAMNESIS
+                    .AsNoTracking()
+                    .Where(a => maxIdLocal == null || a.IDANAMNESIS > maxIdLocal) // Solo trae datos nuevos
+                    .Select(a => new TANAMNESIS
+                    {
+                        IDANAMNESIS = a.IDANAMNESIS,
+                        NOMBRE_PACIENTE = a.NOMBRE_PACIENTE,
+                        DOCTOR = a.DOCTOR != "No" ? a.DOCTOR : null,
+                        TELF_P = a.TELF_P != "No" ? a.TELF_P : null,
+                        TELF_P_OTRO = a.TELF_P_OTRO != "No" ? a.TELF_P_OTRO : null,
+                        CELULAR_P = a.CELULAR_P != "No" ? a.CELULAR_P : null,
+                        CEDULA_NUMERO = a.CEDULA_NUMERO != "No" ? a.CEDULA_NUMERO : null,
+                        NRO_AFILIACION = a.NRO_AFILIACION != "No" ? a.NRO_AFILIACION : null,
+                        IDANAMNESIS_TEXTO = a.IDANAMNESIS_TEXTO
+                    })
+                    .ToListAsync();
+            }
+            catch (Exception e)
+            {
+                throw;
+            }
         }
+
 
 
 
@@ -174,7 +219,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<TANAMNESIS> ConsultarPorId(int IDANAMNESIS);
         Task<int> ConsultarTotalPacientesPorDoctor(int IDDOCTOR);
         Task<TANAMNESIS> ConsultarPorIdTexto(string IDANAMNESIS_TEXTO);
-        Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda();
+        //Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda();
+        Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda(int? maxIdLocal);
         Task<int> ConsultarPorIdTextoElIdAnamnesis(string IDANAMNESIS_TEXTO);
         Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR);
         Task<List<RespuestaDatosAdministrativos.PacientesNuevos>> ConsultarTotalPacientesNuevosEntreFechas(DateTime fechaInicio, DateTime fechaFin);
