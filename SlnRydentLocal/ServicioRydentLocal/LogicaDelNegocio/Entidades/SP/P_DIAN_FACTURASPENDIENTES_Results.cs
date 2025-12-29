@@ -12,7 +12,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.SP
         public int IDRESOLUCION_DIAN { get; set; }
         public string PRESTADOR { get; set; }
         public string CODIGO_PRESTADOR { get; set; }
-        public string NOMBRE_PACIENTE { get; set; }
+		public string CODIGO_PRESTADOR_PPAL { get; set; }
+		public string NOMBRE_PACIENTE { get; set; }
         public string DOCUMENTO { get; set; }
         public string TIPO_DOCUMENTO { get; set; }
         public string FACTURA { get; set; }
@@ -24,6 +25,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.SP
         public string DOCUMENTO_RESPONS { get; set; }
         public string NOMBRE_RESPONS { get; set; }
         public int TIENERESPONSABLE { get; set; } = 0;
+        public string TIPOOPERACION { get; set; }
         public string ERRORES { get; set; }
     }
 }

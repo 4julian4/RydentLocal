@@ -39,5 +39,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
         public string? IDSISPRO { get; set; }
         public string? PASSISPRO { get; set; }
         public Int16? CONFACTURA { get; set; }
-    }
+        public string? CODIGO_PRESTADOR_PPAL { get; set; }
+        public string? PROVEEDOR_FE { get; set; }
+	}
 }

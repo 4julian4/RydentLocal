@@ -24,8 +24,14 @@ using System.Data;
 using System.Globalization;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using static System.Net.Mime.MediaTypeNames;
+using STJ = System.Text.Json.JsonSerializer;
+using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 
 public class Worker : BackgroundService
 {
@@ -35,6 +41,7 @@ public class Worker : BackgroundService
     private readonly IConfiguration _configuration;
     private readonly LNRips _lnRips;
 	private readonly ApiIntermediaClient _api;
+	private readonly IEstadoCuentaService _estadoCuentaService;
 
 	// private readonly AppDbContext _dbContext;
 
@@ -261,16 +268,74 @@ public class Worker : BackgroundService
         {
             await ConsultarEstadoCuenta(clientId, modeloDatosParaConsultarEstadoCuenta);
         });
-    }
-    //----------------------Pasos:
-    //1. Conectar con el servicio de SignalR usando la funcion ConnectToServer 
-    //2. Recibir el pin de acceso de Rydent se usa el evento _hubConnection.On<string, string>("ObtenerPin"
-    //3. Autenticar el pin de acceso de Rydent se usando await RecibirPinRydent(pin, clientId);
-    //4. Enviar el pin de acceso de Rydent al servidor de Rydent
-    // Método para conectar al servidor y registrar el equipo
-    
 
-    public async Task ConnectToServer(IServiceProvider serviceProvider)
+		// NUEVO: Preparar (precargar diálogo)
+		_hubConnection.On<string, string>("PrepararEstadoCuenta", async (clientId, modelo) =>
+		{
+			await PrepararEstadoCuenta(clientId, modelo);
+		});
+
+		// NUEVO: Crear (guardar en BD)
+		_hubConnection.On<string, string>("CrearEstadoCuenta", async (clientId, modelo) =>
+		{
+			await CrearEstadoCuenta(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("PrepararEditarEstadoCuenta", async (clientId, modelo) =>
+		{
+			await PrepararEditarEstadoCuenta(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("EditarEstadoCuenta", async (clientId, modelo) =>
+		{
+			await EditarEstadoCuenta(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("BorrarEstadoCuenta", async (clientId, modelo) =>
+		{
+			await BorrarEstadoCuenta(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("PrepararInsertarAbono", async (clientId, modelo) =>
+		{
+			await PrepararInsertarAbono(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("InsertarAbono", async (clientId, modelo) =>
+		{
+			await InsertarAbono(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("PrepararInsertarAdicional", async (clientId, modelo) =>
+		{
+			await PrepararInsertarAdicional(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("InsertarAdicional", async (clientId, modelo) =>
+		{
+			await InsertarAdicional(clientId, modelo);
+		});
+
+
+		_hubConnection.On<string, string>("PrepararBorrarAbono", async (clientId, modelo) =>
+		{
+			await PrepararBorrarAbono(clientId, modelo);
+		});
+
+		_hubConnection.On<string, string>("BorrarAbono", async (clientId, modelo) =>
+		{
+			await BorrarAbono(clientId, modelo);
+		});
+	}
+	//----------------------Pasos:
+	//1. Conectar con el servicio de SignalR usando la funcion ConnectToServer 
+	//2. Recibir el pin de acceso de Rydent se usa el evento _hubConnection.On<string, string>("ObtenerPin"
+	//3. Autenticar el pin de acceso de Rydent se usando await RecibirPinRydent(pin, clientId);
+	//4. Enviar el pin de acceso de Rydent al servidor de Rydent
+	// Método para conectar al servidor y registrar el equipo
+
+
+	public async Task ConnectToServer(IServiceProvider serviceProvider)
     {
         try
         {
@@ -405,6 +470,7 @@ public class Worker : BackgroundService
         var respuestaPin = new RespuestaPinModel();
         var objPINACCESO = new TCLAVEServicios();
         var objDOCTORES = new TDATOSDOCTORESServicios();
+        var objCONVENIOS = new T_CONVENIOSServicios();
         var objINFORMACIONREPORTES = new TINFORMACIONREPORTESServicios();
         var objEPS = new TCODIGOS_EPSServicios();
         var objPROCEDIMIENTOS = new TCODIGOS_PROCEDIMIENTOSServicios();
@@ -424,7 +490,9 @@ public class Worker : BackgroundService
             respuestaPin.clave.CLAVE = "";
             respuestaPin.acceso = true;
             var listDoctores = await objDOCTORES.ConsultarTodos();
+            var listConvenios = await objCONVENIOS.ConsultarTodos();
             var listInformacionReporte = await objINFORMACIONREPORTES.ConsultarTodos();
+            var listDoctoresConPrestador = await objINFORMACIONREPORTES.ObtenerDoctoresConCodigoPrestadorAsync();
             var listEps = await objEPS.ConsultarTodos();
             var listProcedimientos = await objPROCEDIMIENTOS.ConsultarTodos();
             var listConsultas = await objCONSULTAS.ConsultarTodos();
@@ -444,8 +512,10 @@ public class Worker : BackgroundService
                 respuestaPin.lstDepartamentos = listDepartamentos;
                 respuestaPin.lstCiudades = listCiudades;
                 respuestaPin.lstDoctores = listDoctores.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
-                respuestaPin.lstInformacionReporte = listInformacionReporte.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
-                respuestaPin.lstFrasesXEvolucion = lstFrasesXEvolucion;
+                respuestaPin.lstConvenios = listConvenios.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
+				respuestaPin.lstInformacionReporte = listInformacionReporte.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
+				respuestaPin.lstDoctoresConPrestador = listDoctoresConPrestador;
+				respuestaPin.lstFrasesXEvolucion = lstFrasesXEvolucion;
                 respuestaPin.lstHorariosAgenda = listHorariosAgenda;
                 respuestaPin.lstHorariosAsuntos = listHorariosAsuntos;
                 respuestaPin.lstFestivos = listFestivos;
@@ -706,10 +776,366 @@ public class Worker : BackgroundService
         await _hubConnection.InvokeAsync("RespuestaConsultarEstadoCuenta", clientId, objRespuestaConsultarEstadoCuentaSerializadoComprimido2);
     }
 
+	private async Task PrepararEstadoCuenta(string clientId, string modeloJson)
+	{
+		PrepararNuevoEstadoCuentaResponse res;
+
+		try
+		{
+			// 1) Validación básica
+			if (string.IsNullOrWhiteSpace(modeloJson))
+				throw new Exception("modeloJson llegó vacío.");
+
+			// 2) Deserializar (si falla, lanzamos error y no seguimos)
+			var req = System.Text.Json.JsonSerializer.Deserialize<PrepararNuevoEstadoCuentaRequest>(
+				modeloJson,
+				new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+			) ?? throw new Exception("No se pudo deserializar PrepararNuevoEstadoCuentaRequest (req=null).");
+
+			// 3) Validar IDs (evita problemas de nulls en consultas por IDs 0)
+			if (req.PacienteId <= 0 || req.DoctorId <= 0)
+				throw new Exception($"Request inválido. PacienteId={req.PacienteId}, DoctorId={req.DoctorId}");
+
+			// 4) Resolver el servicio (SCOPED) dentro de un scope
+			using var scope = _scopeFactory.CreateScope();
+			var estadoCuentaService = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			// 5) Ejecutar
+			res = await estadoCuentaService.PrepararNuevoAsync(req)
+				  ?? new PrepararNuevoEstadoCuentaResponse
+				  {
+					  Ok = false,
+					  Mensaje = "PrepararNuevoAsync devolvió null."
+				  };
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine(ex.ToString());
+			res = new PrepararNuevoEstadoCuentaResponse
+			{
+				Ok = false,
+				Mensaje = $"Error en worker (PrepararEstadoCuenta): {ex.Message}"
+			};
+		}
+
+		try
+		{
+			var json = System.Text.Json.JsonSerializer.Serialize(res);
+			var comprimido = ArchivosHelper.CompressString(json);
+
+			await _hubConnection.InvokeAsync("RespuestaPrepararEstadoCuenta", clientId, comprimido);
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"Error enviando RespuestaPrepararEstadoCuenta: {ex}");
+		}
+	}
+
+	private async Task CrearEstadoCuenta(string clientId, string modeloJson)
+	{
+		CrearEstadoCuentaResponse res;
+
+		try
+		{
+			if (string.IsNullOrWhiteSpace(modeloJson))
+				throw new Exception("modeloJson llegó vacío.");
+
+			var req = System.Text.Json.JsonSerializer.Deserialize<CrearEstadoCuentaRequest>(
+				modeloJson,
+				new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+			) ?? throw new Exception("No se pudo deserializar CrearEstadoCuentaRequest (req=null).");
+
+			// Validaciones mínimas típicas
+			if (req.PacienteId <= 0 || req.DoctorId <= 0)
+				throw new Exception($"Request inválido. PacienteId={req.PacienteId}, DoctorId={req.DoctorId}");
+			if (req.Fase <= 0)
+				throw new Exception($"Request inválido. Fase={req.Fase}");
+
+			using var scope = _scopeFactory.CreateScope();
+			var estadoCuentaService = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await estadoCuentaService.CrearAsync(req)
+				  ?? new CrearEstadoCuentaResponse
+				  {
+					  Ok = false,
+					  Mensaje = "CrearAsync devolvió null."
+				  };
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine(ex.ToString());
+			res = new CrearEstadoCuentaResponse
+			{
+				Ok = false,
+				Mensaje = $"Error en worker (CrearEstadoCuenta): {ex.Message}"
+			};
+		}
+
+		try
+		{
+			var json = System.Text.Json.JsonSerializer.Serialize(res);
+			var comprimido = ArchivosHelper.CompressString(json);
+
+			await _hubConnection.InvokeAsync("RespuestaCrearEstadoCuenta", clientId, comprimido);
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"Error enviando RespuestaCrearEstadoCuenta: {ex}");
+		}
+	}
+
+	private async Task PrepararEditarEstadoCuenta(string clientId, string modeloJson)
+	{
+		PrepararEditarEstadoCuentaResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<PrepararEditarEstadoCuentaRequest>(
+				modeloJson,
+				new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+			) ?? throw new Exception("No se pudo deserializar PrepararEditarEstadoCuentaRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.PrepararEditarAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new PrepararEditarEstadoCuentaResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res);
+		var comprimido = ArchivosHelper.CompressString(json);
+		await _hubConnection.InvokeAsync("RespuestaPrepararEditarEstadoCuenta", clientId, comprimido);
+	}
+
+	private async Task EditarEstadoCuenta(string clientId, string modeloJson)
+	{
+		EditarEstadoCuentaResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<EditarEstadoCuentaRequest>(
+				modeloJson,
+				new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+			) ?? throw new Exception("No se pudo deserializar EditarEstadoCuentaRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.EditarAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new EditarEstadoCuentaResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res);
+		var comprimido = ArchivosHelper.CompressString(json);
+		await _hubConnection.InvokeAsync("RespuestaEditarEstadoCuenta", clientId, comprimido);
+	}
+
+
+	private async Task BorrarEstadoCuenta(string clientId, string modeloJson)
+	{
+		BorrarEstadoCuentaResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<BorrarEstadoCuentaRequest>(
+				modeloJson,
+				new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+			) ?? throw new Exception("No se pudo deserializar BorrarEstadoCuentaRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.BorrarAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new BorrarEstadoCuentaResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res);
+		var comprimido = ArchivosHelper.CompressString(json);
+		await _hubConnection.InvokeAsync("RespuestaBorrarEstadoCuenta", clientId, comprimido);
+	}
+
+	private async Task PrepararInsertarAbono(string clientId, string modeloJson)
+	{
+		PrepararInsertarAbonoResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<PrepararInsertarAbonoRequest>(
+				modeloJson, JsonHelper.Options
+			) ?? throw new Exception("No se pudo deserializar PrepararInsertarAbonoRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.PrepararInsertarAbonoAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new PrepararInsertarAbonoResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res, JsonHelper.Options);
+		var comprimido = ArchivosHelper.CompressString(json);
+
+		await _hubConnection.InvokeAsync("RespuestaPrepararInsertarAbono", clientId, comprimido);
+	}
+
+	private async Task InsertarAbono(string clientId, string modeloJson)
+	{
+		InsertarAbonoResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<InsertarAbonoRequest>(
+				modeloJson, JsonHelper.Options
+			) ?? throw new Exception("No se pudo deserializar InsertarAbonoRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.InsertarAbonoAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new InsertarAbonoResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res, JsonHelper.Options);
+		var comprimido = ArchivosHelper.CompressString(json);
+
+		await _hubConnection.InvokeAsync("RespuestaInsertarAbono", clientId, comprimido);
+	}
+
+	private async Task PrepararInsertarAdicional(string clientId, string modeloJson)
+	{
+		PrepararInsertarAdicionalResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<PrepararInsertarAdicionalRequest>(
+				modeloJson, JsonHelper.Options
+			) ?? throw new Exception("No se pudo deserializar PrepararInsertarAdicionalRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.PrepararInsertarAdicionalAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new PrepararInsertarAdicionalResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res, JsonHelper.Options);
+		var comprimido = ArchivosHelper.CompressString(json);
+
+		await _hubConnection.InvokeAsync("RespuestaPrepararInsertarAdicional", clientId, comprimido);
+	}
+
+	private async Task InsertarAdicional(string clientId, string modeloJson)
+	{
+		InsertarAdicionalResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<InsertarAdicionalRequest>(
+				modeloJson, JsonHelper.Options
+			) ?? throw new Exception("No se pudo deserializar InsertarAdicionalRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.InsertarAdicionalAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new InsertarAdicionalResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res, JsonHelper.Options);
+		var comprimido = ArchivosHelper.CompressString(json);
+
+		await _hubConnection.InvokeAsync("RespuestaInsertarAdicional", clientId, comprimido);
+	}
 
 
 
-    public async Task ObtenerDatosEvolucion(string clientId, int idAnanesis)
+	// ---------------------------------------------------------
+	// 1) PREPARAR BORRAR ABONO (NO borra, solo trae contexto)
+	// ---------------------------------------------------------
+	private async Task PrepararBorrarAbono(string clientId, string modeloJson)
+	{
+		PrepararBorrarAbonoResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<PrepararBorrarAbonoRequest>(
+				modeloJson, JsonHelper.Options
+			) ?? throw new Exception("No se pudo deserializar PrepararBorrarAbonoRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			// ✅ Aquí NO borramos nada.
+			// Solo traemos contexto (igual que Delphi arma el texto y pide motivo),
+			// y devolvemos lo que el front necesita para confirmar.
+			res = await svc.PrepararBorrarAbonoAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new PrepararBorrarAbonoResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res, JsonHelper.Options);
+		var comprimido = ArchivosHelper.CompressString(json);
+
+		await _hubConnection.InvokeAsync("RespuestaPrepararBorrarAbono", clientId, comprimido);
+	}
+
+	private async Task BorrarAbono(string clientId, string modeloJson)
+	{
+		BorrarAbonoResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<BorrarAbonoRequest>(
+				modeloJson, JsonHelper.Options
+			) ?? throw new Exception("No se pudo deserializar BorrarAbonoRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			// ✅ Aquí SÍ se ejecuta el flujo Delphi:
+			// 1) Insertar a T_ADICIONALES_ABONOS_BORRAR (copia + motivo)
+			// 2) Delete de T_ADICIONALES_ABONOS (por IDENTIFICADOR)
+			// 3) Delete de T_ABONOS_TIPO_PAGO (por IDRELACION)
+			// 4) Delete de T_ADICIONALES_ABONOS_MOTIVOS (por IDRELACION)
+			// 5) Delete de T_ABONOS_XDR_PAGAR (por IDABONO/IDADICIONAL)
+			// 6) Execute procedure ACTUALIZARESTACUENTA
+			res = await svc.BorrarAbonoAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new BorrarAbonoResponse { Ok = false, Mensaje = ex.Message };
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res, JsonHelper.Options);
+		var comprimido = ArchivosHelper.CompressString(json);
+
+		await _hubConnection.InvokeAsync("RespuestaBorrarAbono", clientId, comprimido);
+	}
+
+
+	public async Task ObtenerDatosEvolucion(string clientId, int idAnanesis)
     {
         var objEvolucion = new TEVOLUCIONServicios();
         var listEvolucion = await objEvolucion.ConsultarPorAnamnesis(idAnanesis);
@@ -914,7 +1340,7 @@ public class Worker : BackgroundService
 
     
     // Conversor para manejar TimeSpan en JSON
-    public class TimeSpanConverterJson : JsonConverter
+    /*public class TimeSpanConverterJson : JsonConverter
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
@@ -927,7 +1353,7 @@ public class Worker : BackgroundService
         }
 
         public override bool CanConvert(Type objectType) => objectType == typeof(TimeSpan);
-    }
+    }*/
 
 
     public async Task PresentarRips(string clientId, int identificador, string objPresentarRips)
@@ -1026,57 +1452,107 @@ public class Worker : BackgroundService
 
 		var resultados = new List<ResultadoPresentacionItem>();
 		int okCount = 0;
+		int processed = 0;
+		int total = payload.items?.Count ?? 0;
+
+		// 1) Determinar la operación de salud (SS_SIN_APORTE, SS_RECAUDO, etc.)
+		string opString = "";
+		if (payload.items != null && payload.items.Count > 0)
+		{
+			opString = (payload.items[0].operation ?? "").Trim();
+		}
+
+		HealthOperationType operationType;
+		switch (opString.ToUpperInvariant())
+		{
+			case "SS_RECAUDO":
+				operationType = HealthOperationType.Recaudo;
+				break;
+			case "SS_CUFE":
+				operationType = HealthOperationType.Cufe;
+				break;
+			case "SS_REPORTE":
+				operationType = HealthOperationType.Reporte;
+				break;
+			case "SS_SIN_APORTE":
+			default:
+				operationType = HealthOperationType.SinAporte;
+				opString = "SS_SIN_APORTE"; // normalizamos por si venía vacío
+				break;
+		}
 
 		using var scope = _scopeFactory.CreateScope();
 		var repo = scope.ServiceProvider.GetRequiredService<FacturacionSaludRepository>();
 
 		foreach (var item in payload.items)
 		{
+			ct.ThrowIfCancellationRequested();
+
+			// Si tipoFactura viene null, asumimos 1 (factura normal)
+			int tipoFactura = item.tipoFactura ?? 1;
+
 			var resItem = new ResultadoPresentacionItem
 			{
 				idRelacion = item.idRelacion,
 				factura = item.factura,
-				codigoPrestador = item.codigoPrestador
+				codigoPrestador = item.codigoPrestadorPPAL
 			};
 
 			try
 			{
-				var dto = await repo.BuildHealthInvoiceDtoSinAporteAsync(item.idRelacion, ct);
+				// 2) Construir DTO para la API intermedia según operación y tipoFactura
+				var dto = await repo.BuildHealthInvoiceDtoAsync(
+					item.idRelacion,
+					tipoFactura,
+					operationType,
+					ct);
+
 				var bodyJson = JsonConvert.SerializeObject(dto);
 
-				// 👇 TIPADO EXPLÍCITO: evita el error de inferencia
+				// 3) Invocar API intermedia (mapeando DataicoResponse si viene)
 				(bool ok, string mensaje, string? externalId) =
-					await _api.PostHealthInvoiceAsync(item.codigoPrestador, bodyJson, ct);
+					await _api.PostHealthInvoiceAsync(item.codigoPrestadorPPAL, bodyJson, ct);
 
 				resItem.ok = ok;
 				resItem.mensaje = ok ? "ENVIADA" : mensaje;
 				resItem.externalId = externalId;
 				if (ok) okCount++;
 
-				await EmitProgresoAsync(clienteIdDestino, new
+				// 4) Si fue OK y tenemos UUID, marcar TRANSACCIONID en la base
+				if (ok && !string.IsNullOrWhiteSpace(externalId))
 				{
-					documentRef = item.idRelacion,
-					status = ok ? "ENVIADA" : "ERROR",
-					mensaje = resItem.mensaje,
-					externalId
-				}, ct);
+					await repo.MarcarTransaccionIdAsync(
+						item.idRelacion,
+						tipoFactura,
+						externalId!,
+						ct
+					);
+				}
 			}
 			catch (Exception ex)
 			{
 				resItem.ok = false;
 				resItem.mensaje = "Excepción: " + ex.Message;
-
-				await EmitProgresoAsync(clienteIdDestino, new
-				{
-					documentRef = item.idRelacion,
-					status = "ERROR",
-					mensaje = resItem.mensaje
-				}, ct);
 			}
 
 			resultados.Add(resItem);
+			processed++;
+
+			// 5) Progreso agregado cada 10 (o al terminar)
+			if (processed % 10 == 0 || processed == total)
+			{
+				await EmitProgresoAsync(clienteIdDestino, new
+				{
+					aggregate = true,   // bandera para entender que es parcial
+					processed,
+					total,
+					ok = okCount,
+					fail = processed - okCount
+				}, ct);
+			}
 		}
 
+		// 6) Resumen final
 		await EmitResumenAsync(clienteIdDestino, new ResumenPresentacionLote
 		{
 			total = resultados.Count,
@@ -1086,7 +1562,7 @@ public class Worker : BackgroundService
 		}, ct);
 	}
 
-
+	// Helpers (sin cambios)
 	private async Task EmitProgresoAsync(string clienteIdDestino, object progresoObj, CancellationToken ct)
 	{
 		var progresoJson = JsonConvert.SerializeObject(progresoObj);
@@ -1098,6 +1574,11 @@ public class Worker : BackgroundService
 		var resumenJson = JsonConvert.SerializeObject(resumen);
 		await _hubConnection.InvokeAsync("RespuestaPresentarFacturasEnDian", clienteIdDestino, resumenJson, ct);
 	}
+
+
+
+	
+
 
 
 	public async Task GuardarDatosEvolucion(string clientId, string datosEvolucion)
@@ -2175,46 +2656,56 @@ public class Worker : BackgroundService
         Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(results));
     }
 
-    public class TimeSpanConverter : JsonConverter
+    public class TimeSpanConverter : Newtonsoft.Json.JsonConverter
     {
         public override bool CanConvert(Type objectType)
         {
             return objectType == typeof(TimeSpan) || objectType == typeof(TimeSpan?);
         }
 
-        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        public override object? ReadJson(
+            Newtonsoft.Json.JsonReader reader,
+            Type objectType,
+            object? existingValue,
+            Newtonsoft.Json.JsonSerializer serializer)
         {
-            TimeSpan tiempo;
             if (reader.Value == null)
-            {
-                return null;
-            }
-            else if (reader.Value is DateTime)
-            {
-                var dateTime = (DateTime)reader.Value;
-                return dateTime.TimeOfDay;
-            }
-            else if (reader.Value is TimeSpan)
-            {
-                return (TimeSpan)reader.Value;
-            }
-            else if (TimeSpan.TryParse((string)reader.Value, out tiempo))
-            {
-                return tiempo;
-            }
-            else
-            {
-                var dateTime = (DateTime)reader.Value;
-                return dateTime.TimeOfDay;
-            }
+                return objectType == typeof(TimeSpan) ? TimeSpan.Zero : null;
+
+            if (reader.Value is DateTime dt)
+                return dt.TimeOfDay;
+
+            if (reader.Value is TimeSpan ts)
+                return ts;
+
+            if (reader.Value is string s && TimeSpan.TryParse(s, out var parsed))
+                return parsed;
+
+            // fallback
+            return objectType == typeof(TimeSpan) ? TimeSpan.Zero : null;
         }
 
-        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        public override void WriteJson(
+            Newtonsoft.Json.JsonWriter writer,
+            object? value,
+            Newtonsoft.Json.JsonSerializer serializer)
         {
-            var timeSpan = (TimeSpan)value;
-            writer.WriteValue(timeSpan.ToString());
+            if (value == null) { writer.WriteNull(); return; }
+            writer.WriteValue(((TimeSpan)value).ToString());
         }
     }
+
+
+	public static class JsonHelper
+	{
+		public static readonly JsonSerializerOptions Options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+		{
+			PropertyNameCaseInsensitive = true,
+			DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+			ReadCommentHandling = JsonCommentHandling.Skip,
+			AllowTrailingCommas = true
+		};
+	}
 
 }
 

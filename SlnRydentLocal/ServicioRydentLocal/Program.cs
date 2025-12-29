@@ -48,6 +48,7 @@ public class Program
 				services.AddScoped<IT_ADICIONALES_ABONOSServicios, T_ADICIONALES_ABONOSServicios>();
 				services.AddScoped<IT_RIPS_DXServicios, T_RIPS_DXServicios>();
 				services.AddScoped<IGenerarRipsServicios, GenerarRipsServicios>();
+				services.AddScoped<IEstadoCuentaService, EstadoCuentaService>();
 
 				services.AddScoped<DatosPersonalesServicios>();
 				services.AddScoped<AntecedentesServicios>();

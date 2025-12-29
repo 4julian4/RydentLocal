@@ -18,8 +18,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Facturatech
             using (var dbContext = new AppDbContext())
             {
                 var _Adicionales_Abonos_Dian = new Adicionales_Abonos_Dian().listarXid(id);
-                if (!_Adicionales_Abonos_Dian.Any())
-                {
+                //if (!_Adicionales_Abonos_Dian.Any())
+				if (!(_Adicionales_Abonos_Dian.Count() > 0))
+				{
                     return null;
                 }
                 var P_AdicionalAbono = _Adicionales_Abonos_Dian.FirstOrDefault();
@@ -36,7 +37,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Facturatech
 
         
 
-        public string FacturaXMLBase64XId(int id)
+       /* public string FacturaXMLBase64XId(int id)
         {
             using (var dbContext = new AppDbContext())
             {
@@ -55,7 +56,25 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Facturatech
                     P_AdicionalAbono
                 );
             }
-        }
+        }*/
+
+
+		public string FacturaXMLBase64XId(int id)
+		{
+			var _Adicionales_Abonos_Dian = new Adicionales_Abonos_Dian().listarXid(id);
+			if (!(_Adicionales_Abonos_Dian.Count() > 0))
+			{
+				return null;
+			}
+			var P_AdicionalAbono = _Adicionales_Abonos_Dian.FirstOrDefault();
+			var factura = P_AdicionalAbono.factura ?? "";
+			var prefijo = P_AdicionalAbono.prefijo ?? "";
+			if (string.IsNullOrEmpty(factura))
+			{
+				return null;
+			}
+			return new FacturaTec().DescargarXMLFactura(prefijo, factura.Replace(prefijo, ""), P_AdicionalAbono);
+		}
 
 		public string FacturaBase64XId(int id)
 		{

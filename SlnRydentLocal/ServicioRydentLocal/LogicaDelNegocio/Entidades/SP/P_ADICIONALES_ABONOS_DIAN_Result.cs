@@ -72,5 +72,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.SP
         public string PAIS_PACIENTE { get; set; } = "";
         public string TIPO_DOCUMENTO_PACIENTE { get; set; } = "";
         public string CODIGO_PRESTADOR { get; set; } = "";
-    }
+        public DateTime FECHAFACTURAINI {  get; set; }
+        public string TIPO_PERSONA { get; set; } = "";
+        public string NIVEL_IMPUESTO { get; set; } = "";
+        public string TIPOFORMAPAGO { get; set; } = "";
+        public string COBERTURA { get; set; } = "";
+		public string MODALIDAD_PAGO { get; set; } = "";
+		public string PAISDEORIGEN { get; set; } = "";
+		public string TIPODOCRECAUDO { get; set; } = "";
+		public string NUMERO_CONTRATO { get; set; } = "";
+        public string NUMERO_POLIZA { get; set; } = "";
+		public string TIPOAFILIACION { get; set; } = "";
+	}
 }

@@ -53,6 +53,7 @@ public class AppDbContext : DbContext
 	public DbSet<T_ADICIONALES_ABONOS_MOTIVOS> T_ADICIONALES_ABONOS_MOTIVOS { get; set; }
 	public DbSet<T_CONFIGURACION_VALOR> T_CONFIGURACION_VALOR { get; set; }
 	public DbSet<T_CUENTASXCOBRAR> T_CUENTASXCOBRAR { get; set; }
+	public DbSet<T_CONVENIOS> T_CONVENIOS { get; set; }
 	public DbSet<TCITASPENDIENTES> TCITASPENDIENTES { get; set; }
 	public DbSet<TCONFIGURACIONCALENDARIO> TCONFIGURACIONCALENDARIO { get; set; }
 	public DbSet<TCONFIGURACIONES_RYDENT> TCONFIGURACIONES_RYDENT { get; set; }
@@ -106,8 +107,12 @@ public class AppDbContext : DbContext
 
 	//------------------------------Aca ubicamos lo que tiene que ver con el Rips------------------------------//
 	DbSet<P_ADICIONALES_ABONOS_DIAN_Result> P_ADICIONALES_ABONOS_DIAN_Result { get; set; }
+	DbSet<P_ADICIONALES_ABONOS_MOTIVOS_D_Result> P_ADICIONALES_ABONOS_MOTIVOS_D_Result { get; set; }
+	DbSet<P_ADICIONALES_ABONOS_COPAGOS_D_Result> P_ADICIONALES_ABONOS_COPAGOS_D_Result { get; set; }
 	DbSet<P_DIAN_FACTURASPENDIENTES_Results> P_DIAN_FACTURASPENDIENTES_Results { get; set; }
 	DbSet<P_DIAN_FACTURASCREADAS_Results> P_DIAN_FACTURASCREADAS_Results { get; set; }
+	DbSet<P_MAX_CON_LETRAS_Result> P_MAX_CON_LETRAS_Result { get; set; }
+
 	DbSet<SP_RIPS_JSON_APResult> SP_RIPS_JSON_APResult { get; set; }
 	DbSet<SP_RIPS_JSON_USResult> SP_RIPS_JSON_USResult { get; set; }
 	DbSet<SP_RIPS_JSON_ACResult> SP_RIPS_JSON_ACResult { get; set; }
@@ -116,19 +121,65 @@ public class AppDbContext : DbContext
 	{
 		var PIDRELACIONParameter = new FbParameter("PIDRELACION", PIDRELACION);
 		var s = this.P_ADICIONALES_ABONOS_DIAN_Result
-			.FromSqlRaw("select * from P_ADICIONALES_ABONOS_DIAN(@PIDRELACION)", PIDRELACIONParameter)
+			.FromSqlRaw("select * from P_ADICIONALES_ABONOS_DIAN_D(@PIDRELACION)", PIDRELACIONParameter)
 			.ToList();
 		return s;
 	}
+
+	public List<P_ADICIONALES_ABONOS_MOTIVOS_D_Result> P_ADICIONALES_ABONOS_MOTIVOS_D(int IDRELACION)
+	{
+		var IDRELACIONParameter = new FbParameter("IDRELACION", IDRELACION);
+		var s = this.P_ADICIONALES_ABONOS_MOTIVOS_D_Result
+			.FromSqlRaw("select * from P_ADICIONALES_ABONOS_MOTIVOS_D(@IDRELACION)", IDRELACIONParameter)
+			.ToList();
+		return s;
+	}
+
+	/// <summary>
+	/// Ejecuta el SP P_CXC_DIAN_D(PIDRELACION).
+	/// 
+	/// OJO:
+	/// - Aunque el SP se llama P_CXC_DIAN_D y trabaja sobre T_CUENTASXCOBRAR,
+	///   su estructura de salida es compatible con P_ADICIONALES_ABONOS_DIAN_D.
+	/// - Por eso reutilizamos la misma clase de resultado: P_ADICIONALES_ABONOS_DIAN_Result.
+	/// 
+	/// En cristiano:
+	/// - Si tipoFactura indica que es CxC, usaremos este método en lugar
+	///   de P_ADICIONALES_ABONOS_DIAN, pero seguiremos mapeando al mismo modelo.
+	/// </summary>
 
 	public List<P_ADICIONALES_ABONOS_DIAN_Result> P_CXC_DIAN(int PIDRELACION)
 	{
 		var PIDRELACIONParameter = new FbParameter("PIDRELACION", PIDRELACION);
 		var s = this.P_ADICIONALES_ABONOS_DIAN_Result
-			.FromSqlRaw("select * from P_CXC_DIAN(@PIDRELACION)", PIDRELACIONParameter)
+			.FromSqlRaw("select * from P_CXC_DIAN_D(@PIDRELACION)", PIDRELACIONParameter)
 			.ToList();
 		return s;
 	}
+
+	public async Task<List<P_MAX_CON_LETRAS_Result>> P_MAX_CON_LETRAS(int idDoctor)
+	{
+		var p = new FbParameter("IDDOCTOR", idDoctor);
+
+		return await this.P_MAX_CON_LETRAS_Result
+			.FromSqlRaw("select * from P_MAX_CON_LETRAS(@IDDOCTOR)", p)
+			.ToListAsync();
+	}
+
+
+	public List<P_ADICIONALES_ABONOS_COPAGOS_D_Result> P_ADICIONALES_ABONOS_COPAGOS_D(string factura)
+	{
+		// Creamos el parámetro para el SP (el nombre debe coincidir con el del SP: FACTURA)
+		var FACTURAParameter = new FbParameter("FACTURA", factura);
+
+		
+		var lista = this.P_ADICIONALES_ABONOS_COPAGOS_D_Result
+			.FromSqlRaw("select * from P_ADICIONALES_ABONOS_COPAGOS_D(@FACTURA)", FACTURAParameter)
+			.ToList();
+
+		return lista;
+	}
+
 
 	public List<P_DIAN_FACTURASPENDIENTES_Results> P_DIAN_FACTURASPENDIENTES()
 	{

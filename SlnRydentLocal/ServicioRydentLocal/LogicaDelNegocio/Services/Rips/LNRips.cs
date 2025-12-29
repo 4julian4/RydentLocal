@@ -156,9 +156,10 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Rips
                 else
                 {
                     var fac = new LNDianGeneral();
-                    objRIPS.xmlFevFile = fac.FacturaXMLBase64XId(objRIPS.rips.idRelacion ?? 0);
+                    //objRIPS.xmlFevFile = fac.FacturaXMLBase64XId(objRIPS.rips.idRelacion ?? 0);
+					objRIPS.xmlFevFile = fac.FacturaBase64XId(objRIPS.rips.idRelacion ?? 0);
 
-                }
+				}
                 string json = System.Text.Json.JsonSerializer.Serialize(objRIPS);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 var response = client.PostAsync(url, content);
@@ -298,21 +299,62 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Rips
                              tipoUsuario = x.TIPOUSUARIO,
                              servicios = new ServiciosModel()
                              {
-                                 consultas = lstAC(acModel.Where(y => y.NUMERO_FACTURA == factura).OrderBy(x => x.CONSECUTIVO).ToList()),
-                                 procedimientos = lstAP(apModel.Where(y => y.NUMERO_FACTURA == factura).OrderBy(x => x.CONSECUTIVO).ToList())
-                             }
+                                // consultas = lstAC(acModel.Where(y => y.NUMERO_FACTURA == factura).OrderBy(x => x.CONSECUTIVO).ToList()),
+                                 //procedimientos = lstAP(apModel.Where(y => y.NUMERO_FACTURA == factura).OrderBy(x => x.CONSECUTIVO).ToList())
+
+								 consultas = lstAC(acModel.Where(y => y.NUMERO_FACTURA == factura && y.IDANAMNESIS_TEXTO == x.IDANAMNESIS_TEXTO).OrderBy(x => x.CONSECUTIVO).ToList()),
+								 procedimientos = lstAP(apModel.Where(y => y.NUMERO_FACTURA == factura && y.IDANAMNESIS_TEXTO == x.IDANAMNESIS_TEXTO).OrderBy(x => x.CONSECUTIVO).ToList())
+							 }
                          });
                          lstTransaccion.Add(modelo);
                      }
-
-                 }
+					ReasignarConsecutivos(lstTransaccion);
+				}
                  return lstTransaccion;
              }
 
          }
 
-        
-        private List<ConsultasModel> lstAC(List<SP_RIPS_JSON_ACResult> lstAC)
+		public void ReasignarConsecutivos(List<transaccionModel> lstTransaccion)
+		{
+
+			// Recorrer todas las transacciones
+			foreach (var transaccion in lstTransaccion)
+			{
+				int consecutivoUsuario = 1; // Contador global de usuarios
+				if (transaccion.rips?.usuarios != null)
+				{
+					foreach (var usuario in transaccion.rips.usuarios)
+					{
+						// Asignar consecutivo global al usuario
+						usuario.consecutivo = consecutivoUsuario++;
+
+						// Reasignar consecutivos de consultas si existen
+						if (usuario.servicios?.consultas != null)
+						{
+							int consecutivoConsulta = 1;
+							foreach (var consulta in usuario.servicios.consultas)
+							{
+								consulta.consecutivo = consecutivoConsulta++;
+							}
+						}
+
+						// Reasignar consecutivos de procedimientos si existen
+						if (usuario.servicios?.procedimientos != null)
+						{
+							int consecutivoProcedimiento = 1;
+							foreach (var procedimiento in usuario.servicios.procedimientos)
+							{
+								procedimiento.consecutivo = consecutivoProcedimiento++;
+							}
+						}
+					}
+				}
+			}
+		}
+
+
+		private List<ConsultasModel> lstAC(List<SP_RIPS_JSON_ACResult> lstAC)
         {
             var modeloReturn = new List<ConsultasModel>();
             if (lstAC.Any())

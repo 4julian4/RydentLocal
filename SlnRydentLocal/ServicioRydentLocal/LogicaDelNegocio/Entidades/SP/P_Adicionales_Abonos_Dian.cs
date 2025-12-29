@@ -13,7 +13,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades.SP
         public string descripcion { get; set; } = "";
         public string factura { get; set; } = "";
         public DateTime fechaFactura { get; set; }
-        public DateTime fechaResolucion { get; set; }
+		public DateTime fechaFacturaIni { get; set; }
+		public DateTime fechaResolucion { get; set; }
         public string numeracion { get; set; } = "";
         public string resolucion { get; set; } = "";
         public int rangoIni { get; set; }
