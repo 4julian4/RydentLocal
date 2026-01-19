@@ -17,7 +17,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 		Task<PrepararEditarEstadoCuentaResponse> PrepararEditarAsync(PrepararEditarEstadoCuentaRequest req);
 		Task<EditarEstadoCuentaResponse> EditarAsync(EditarEstadoCuentaRequest req);
 		Task<BorrarEstadoCuentaResponse> BorrarAsync(BorrarEstadoCuentaRequest req);
-
+		Task<ConsultarSugeridosAbonoResponse> ConsultarSugeridosAbonoAsync(ConsultarSugeridosAbonoRequest req);
 		Task<PrepararInsertarAbonoResponse> PrepararInsertarAbonoAsync(PrepararInsertarAbonoRequest req);
 		Task<InsertarAbonoResponse> InsertarAbonoAsync(InsertarAbonoRequest req);
 
@@ -340,6 +340,53 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 				return res;
 			}
 		}
+		// =========================================================
+		// CONSULTAR SUGERIDOS RECIBO Y FACTURA
+		// =========================================================
+
+		public async Task<ConsultarSugeridosAbonoResponse> ConsultarSugeridosAbonoAsync(ConsultarSugeridosAbonoRequest req)
+		{
+			using var _db = new AppDbContext();
+			var con = (FbConnection)_db.Database.GetDbConnection();
+			if (con.State != ConnectionState.Open) await con.OpenAsync();
+
+			var ocultarFactura = await DebeOcultarFacturaAsync(
+				con,
+				req.IdPaciente,
+				req.Fase,
+				req.IdDoctorTratante
+				);
+
+			string? recibo = null;
+			string? factura = null;
+			int? idRes = null;
+
+			if (req.IdDoctorSeleccionado > 0)
+			{
+				recibo = await ObtenerReciboSugeridoAsync(con, req.IdDoctorSeleccionado);
+
+				if (!ocultarFactura)
+				{
+					var facInfo = await ObtenerFacturaSugeridaYResolucionAsync(con, req.IdDoctorSeleccionado);
+					factura = facInfo.Factura;
+					idRes = facInfo.IdResolucion;
+				}
+				else
+				{
+					factura = "";
+					idRes = null;
+				}
+			}
+
+			return new ConsultarSugeridosAbonoResponse
+			{
+				Ok = true,
+				OcultarFactura = ocultarFactura,
+				ReciboSugerido = recibo,
+				FacturaSugerida = factura,
+				IdResolucionDian = idRes
+			};
+		}
 
 		// =========================================================
 		// PREPARAR INSERTAR ABONO
@@ -436,8 +483,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
 				// Motivos / códigos
 				var (motivos, codigos) = rules.UsaCatalogoMotivos
-					? await CargarMotivosDesdeCatalogoAsync(con)
-					: await CargarMotivosRapidosAsync(con);
+					? await CargarMotivosRapidosAsync(con)
+					: await CargarMotivosDesdeCatalogoAsync(con);
 
 				// Sugeridos (si ya hay recibidoPor)
 				string? reciboSugerido = null;
@@ -1095,6 +1142,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 		// =========================================================
 		// HELPERS PRIVADOS
 		// =========================================================
+		
 
 		private async Task<bool> TieneAbonosOAdicionalesAsync(int pacienteId, int doctorId, int fase)
 		{
