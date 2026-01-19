@@ -296,6 +296,12 @@ public class Worker : BackgroundService
 			await BorrarEstadoCuenta(clientId, modelo);
 		});
 
+		_hubConnection.On<string, string>("ConsultarSugeridosAbono", async (clientId, modelo) =>
+		{
+			await ConsultarSugeridosAbono(clientId, modelo);
+		});
+
+
 		_hubConnection.On<string, string>("PrepararInsertarAbono", async (clientId, modelo) =>
 		{
 			await PrepararInsertarAbono(clientId, modelo);
@@ -962,6 +968,42 @@ public class Worker : BackgroundService
 		var comprimido = ArchivosHelper.CompressString(json);
 		await _hubConnection.InvokeAsync("RespuestaBorrarEstadoCuenta", clientId, comprimido);
 	}
+
+
+	private async Task ConsultarSugeridosAbono(string clientId, string modeloJson)
+	{
+		ConsultarSugeridosAbonoResponse res;
+
+		try
+		{
+			var req = System.Text.Json.JsonSerializer.Deserialize<ConsultarSugeridosAbonoRequest>(
+				modeloJson, JsonHelper.Options
+			) ?? throw new Exception("No se pudo deserializar ConsultarSugeridosAbonoRequest.");
+
+			using var scope = _scopeFactory.CreateScope();
+			var svc = scope.ServiceProvider.GetRequiredService<IEstadoCuentaService>();
+
+			res = await svc.ConsultarSugeridosAbonoAsync(req);
+		}
+		catch (Exception ex)
+		{
+			res = new ConsultarSugeridosAbonoResponse
+			{
+				Ok = false,
+				Mensaje = ex.Message,
+				OcultarFactura = false,
+				ReciboSugerido = null,
+				FacturaSugerida = null,
+				IdResolucionDian = null
+			};
+		}
+
+		var json = System.Text.Json.JsonSerializer.Serialize(res, JsonHelper.Options);
+		var comprimido = ArchivosHelper.CompressString(json);
+
+		await _hubConnection.InvokeAsync("RespuestaConsultarSugeridosAbono", clientId, comprimido);
+	}
+
 
 	private async Task PrepararInsertarAbono(string clientId, string modeloJson)
 	{
