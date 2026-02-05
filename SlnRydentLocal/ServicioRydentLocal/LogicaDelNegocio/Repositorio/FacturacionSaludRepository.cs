@@ -84,7 +84,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Repositorio
 		{
 			// Ejecuta tu SP via AppDbContext (ya lo tienes listo)
 			// Nota: tu método es síncrono; lo envolvemos para no bloquear el hilo.
-			var rows = await Task.Run(() => _db.P_ADICIONALES_ABONOS_DIAN(idRelacion), ct);
+			var rows = await Task.Run(async () => await  _db.P_ADICIONALES_ABONOS_DIANAsync(idRelacion), ct);
 
 			var r = rows.FirstOrDefault();
 			if (r == null)
@@ -228,8 +228,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Repositorio
 			var dto = new HealthInvoiceDto
 			{
 				// En pruebas: no enviar a DIAN ni correo
-				SendToDian = false,
-				SendEmail = false,
+				SendToDian = true,
+				SendEmail = true,
 
 				Number = factura,
 				IssueDate = DdMMyyyy(fechaFactura),
@@ -253,8 +253,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Repositorio
 				Health = new HealthDto
 				{
 					Version = "API_SALUD_V2",
-					Coverage = "PLAN_DE_BENEFICIOS",
-					PaymentModality = "PAGO_POR_CAPITACION",
+					Coverage = string.IsNullOrEmpty(r.COBERTURA) ? "PARTICULAR" : r.COBERTURA,
+					PaymentModality = string.IsNullOrEmpty(r.MODALIDAD_PAGO) ? "PAGO_INDIVIDUAL_POR_CASO_CONJUNTO_INTEGRAL_PAQUETE_CANASTA" : r.MODALIDAD_PAGO,
 					ProviderCode = (r.CODIGO_PRESTADOR ?? string.Empty).Trim(), // si tu SP lo trae
 					PeriodStartDate = DdMMyyyy(fechaFactura),
 					PeriodEndDate = DdMMyyyy(fechaFactura)
@@ -290,7 +290,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Repositorio
 			CancellationToken ct)
 		{
 			// 1) Leemos la cabecera (mismo SP que usas para SS-SIN-APORTE)
-			var cabRows = await Task.Run(() => _db.P_ADICIONALES_ABONOS_DIAN(idRelacion), ct);
+			var cabRows = await Task.Run(async () => await _db.P_ADICIONALES_ABONOS_DIANAsync(idRelacion), ct);
 			var r = cabRows.FirstOrDefault();
 			if (r == null)
 				throw new Exception($"No existe IDRELACION={idRelacion} en P_ADICIONALES_ABONOS_DIAN");
@@ -463,8 +463,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Repositorio
 			var dto = new HealthInvoiceDto
 			{
 				// En esta fase podemos dejar SendToDian = false si quieres solo pruebas
-				SendToDian = false,
-				SendEmail = false,
+				SendToDian = true,
+				SendEmail = true,
 
 				Number = factura,
 				IssueDate = DdMMyyyy(fechaFactura),
@@ -583,7 +583,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Repositorio
 		/// Convierte un DateTime a cadena "dd/MM/yyyy" como espera Dataico.
 		/// </summary>
 		private static string DdMMyyyy(DateTime dt)
-			=> dt.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+			=> dt.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
 
 		/// <summary>
 		/// Construye la lista de impuestos (IVA) para un motivo.

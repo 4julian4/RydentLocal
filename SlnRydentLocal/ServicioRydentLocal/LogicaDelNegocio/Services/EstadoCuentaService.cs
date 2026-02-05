@@ -31,9 +31,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
 	public class EstadoCuentaService : IEstadoCuentaService
 	{
-		public EstadoCuentaService()
+		private readonly IRadoIntegrationService _rado;
+		public EstadoCuentaService(IRadoIntegrationService rado)
 		{
 			// Constructor vacío (sin DI por tu contexto actual).
+			_rado = rado;
+			_rado = rado;
 		}
 
 		// =========================================================
@@ -696,6 +699,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 					await EjecutarIncrementarIdentificadorAsync(con, tx, req.IdPaciente, req.Fase, req.IdDoctorTratante);
 
 					tx.Commit();
+
+					try
+					{
+						await _rado.TryEnviarIngresoPorIdRelacionAsync(idRelacion, CancellationToken.None);
+					}
+					catch
+					{
+						// NO tumbar el abono por ahora
+						// TODO: loguear
+					}
 
 					// refrescar mora total
 					var (moraTotal, _) = await ConsultarCuentaBasicaAsync(con, req.IdPaciente, req.Fase, req.IdDoctorTratante);

@@ -17,7 +17,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
         public string? DESCRIPCION { set; get; }
         public string? RECIBO { set; get; }
         public int? IDENTIFICADOR { set; get; }
-        public DateTime? HORA { set; get; }
+        public TimeSpan? HORA { set; get; }
         public string? IDODONTOLOGO { set; get; }
         public int? IDDOCTOR { set; get; }
         [Key]
@@ -37,8 +37,14 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
         public string? NC_APROBADO_POR { set; get; }
         public string? RECIBO_RELACIONADO { set; get; }
         public string? TRANSACCIONID { set; get; }
-        public DateTime? FECHASUCESO { set; get; }
-        public string? MOTIVO { set; get; }
+        public int? COPAGO { set; get; }
+        public string? CONCEPTOCOPAGO { set; get; }
+		public string? COPAGOFACTURARELACIONADA { set; get; }
+		public string? COBERTURA { set; get; }
+		public string? NUMERO_POLIZA { set; get; }
+		public string? TIPOOPERACION { set; get; }
+		//public DateTime? FECHASUCESO { set; get; }
+        //public string? MOTIVO { set; get; }
     }
 }
 

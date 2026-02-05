@@ -39,7 +39,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        public async Task<T_ADICIONALES_ABONOS> ConsultarPorId(int ID, int IDENTIFICADOR, int IDDOCTOR, int FASE)
+             
+
+		public async Task<T_ADICIONALES_ABONOS> ConsultarPorId(int ID, int IDENTIFICADOR, int IDDOCTOR, int FASE)
         {
             using (var _dbcontext = new AppDbContext())
             {
