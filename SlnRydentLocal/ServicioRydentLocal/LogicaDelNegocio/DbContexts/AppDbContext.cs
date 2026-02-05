@@ -1,15 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.IO;
-using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
-using FirebirdSql.Data.FirebirdClient;
+﻿using FirebirdSql.Data.FirebirdClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.Configuration;
-
 //using RydentDatos.RydentDB;
 
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
@@ -17,6 +9,14 @@ using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos.Rado;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.IO;
+using System.Numerics;
+using System.Text;
+using System.Threading.Tasks;
 
 public class AppDbContext : DbContext
 {
@@ -93,6 +93,8 @@ public class AppDbContext : DbContext
 	DbSet<P_CONSULTAR_ESTACUENTA_TOTAL> P_CONSULTAR_ESTACUENTA_TOTAL_Result { get; set; }
 	DbSet<P_CONSULTAR_ESTACUENTA> P_CONSULTAR_ESTACUENTA_Result { get; set; }
 	DbSet<P_CONSULTAR_MORA_ID_TEXTO> P_CONSULTAR_MORA_ID_TEXTO_Result { get; set; }
+
+	public DbSet<AnamnesisIngresoRow> AnamnesisIngresoRows { get; set; }
 	public DbSet<RespuestaSaldoPorDoctor> RespuestaSaldoPorDoctor { get; set; }
 
 	public async Task<List<P_BUSCARPACIENTE>> P_BUSCARPACIENTE(int TIPO, string P_VALOR)
@@ -124,6 +126,16 @@ public class AppDbContext : DbContext
 			.FromSqlRaw("select * from P_ADICIONALES_ABONOS_DIAN_D(@PIDRELACION)", PIDRELACIONParameter)
 			.ToList();
 		return s;
+	}
+	public async Task<List<P_ADICIONALES_ABONOS_DIAN_Result>> P_ADICIONALES_ABONOS_DIANAsync(
+	int pidRelacion, CancellationToken ct = default)
+	{
+		var p = new FbParameter("PIDRELACION", pidRelacion);
+
+		return await this.P_ADICIONALES_ABONOS_DIAN_Result
+			.FromSqlRaw("select * from P_ADICIONALES_ABONOS_DIAN_D(@PIDRELACION)", p)
+			.AsNoTracking()
+			.ToListAsync(ct);
 	}
 
 	public List<P_ADICIONALES_ABONOS_MOTIVOS_D_Result> P_ADICIONALES_ABONOS_MOTIVOS_D(int IDRELACION)
@@ -393,6 +405,11 @@ public class AppDbContext : DbContext
 			.HasKey(c => new { c.FECHA });
 		modelBuilder.Entity<TCODIGOS_CIUDAD>()
 			.HasKey(c => new { c.CODIGO_CIUDAD });
+		modelBuilder.Entity<AnamnesisIngresoRow>(e =>
+		{
+			e.HasNoKey();     // ✅ keyless
+			e.ToView(null);   // ✅ EF no intenta tratarlo como tabla/vista real
+		});
 
 		//modelBuilder.Entity<TANAMNESIS>()
 		//   .HasOne(t => t.DatosPersonales)

@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Newtonsoft.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
+using Newtonsoft.Json.Serialization;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.TablasFraccionadas.TAnamnesis;
@@ -20,17 +23,19 @@ using ServicioRydentLocal.LogicaDelNegocio.Services.Dataico;
 using ServicioRydentLocal.LogicaDelNegocio.Services.Rips;
 using ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis;
 using SixLabors.ImageSharp;
+using System;
 using System.Data;
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
-using static System.Net.Mime.MediaTypeNames;
-using STJ = System.Text.Json.JsonSerializer;
-using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using static System.Formats.Asn1.AsnWriter;
+using static System.Net.Mime.MediaTypeNames;
+using STJ = System.Text.Json.JsonSerializer;
 
 
 public class Worker : BackgroundService
@@ -59,8 +64,8 @@ public class Worker : BackgroundService
         _configuration = configuration;
 		_api = api;
 		_lnRips = new LNRips(_configuration); // ✅ Pasamos IConfiguration
-        string url = _configuration.GetValue<string>("signalRServer:url");
-        _hubConnection = new HubConnectionBuilder()
+		string url = _configuration.GetValue<string>("signalRServer:url");
+		_hubConnection = new HubConnectionBuilder()
             .WithUrl(url)
             .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1) })
             .Build();
@@ -88,7 +93,7 @@ public class Worker : BackgroundService
                     var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
                     var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(System.Environment.MachineName);
 
-                    bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", datosClientes.ENTRADA);
+                    bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", retornarEntrada(datosClientes.ENTRADA));
 
                     if (isAlreadyRegistered)
                     {
@@ -97,7 +102,7 @@ public class Worker : BackgroundService
                     else
                     {
                         _logger.LogInformation("El dispositivo no estaba registrado tras la reconexión. Registrándolo nuevamente...");
-                        await RegisterDeviceAsync(datosClientes.ENTRADA);
+                        await RegisterDeviceAsync(retornarEntrada(datosClientes.ENTRADA));
                     }
                 }
             }
@@ -115,6 +120,12 @@ public class Worker : BackgroundService
             await StartConnectionAsync();  // Intenta reconectar
         };
     }
+    private string retornarEntrada(string entra)
+	{
+		string? sede = _configuration.GetValue<string>("sedes:sede");
+        return string.IsNullOrEmpty(sede) ? entra : entra + "::" + sede;
+
+	}
 
     // Método para iniciar la conexión a SignalR
     private async Task StartConnectionAsync()
@@ -235,6 +246,11 @@ public class Worker : BackgroundService
 			await PresentarFacturasEnDian(clienteIdDestino, payloadJson);
 		});
 
+		_hubConnection.On<string, string>("DescargarJsonFacturaPendiente", async (clienteIdDestino, payloadJson) =>
+		{
+	        await DescargarJsonFacturaPendiente(clienteIdDestino, payloadJson);
+        });
+
 		_hubConnection.On<string>("ObtenerCodigosEps", async (clientId) =>
         {
             await ObtenerCodigosEps(clientId);
@@ -352,7 +368,7 @@ public class Worker : BackgroundService
 
                 if (_hubConnection.State == HubConnectionState.Connected)
                 {
-                    await RegisterDeviceAsync(datosClientes.ENTRADA);
+                    await RegisterDeviceAsync(retornarEntrada(datosClientes.ENTRADA));
                     _isDeviceRegistered = true; // Marca como registrado
                 }
                 else
@@ -375,8 +391,8 @@ public class Worker : BackgroundService
         {
             if (_hubConnection.State == HubConnectionState.Connected)
             {
-                // Verificar si ya está registrado
-                bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", entrada);
+				// Verificar si ya está registrado
+				bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", entrada);
                 if (isAlreadyRegistered)
                 {
                     _logger.LogWarning("El dispositivo ya está registrado. No se realizará un registro duplicado.");
@@ -445,15 +461,18 @@ public class Worker : BackgroundService
                         var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
                         var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(System.Environment.MachineName);
 
-                        _logger.LogInformation($"Intentando registrar el dispositivo con entrada: {datosClientes.ENTRADA}");
-                        await RegisterDeviceAsync(datosClientes.ENTRADA);
-                    }
+                        _logger.LogInformation($"Intentando registrar el dispositivo con entrada: {retornarEntrada(datosClientes.ENTRADA)}");
+                        await RegisterDeviceAsync(retornarEntrada(datosClientes.ENTRADA));
+					}
+					//var estadoCuentaService = scope.ServiceProvider.GetRequiredService<IRadoIntegrationService>();
+					//var x = estadoCuentaService.TryEnviarIngresoPorIdRelacionAsync(29092);
 
-                    _logger.LogInformation("Consulta completada correctamente.");
+					_logger.LogInformation("Consulta completada correctamente.");
                 }
 
-                // Esperar antes de la siguiente iteración
-                await Task.Delay(TimeSpan.FromMinutes(3), stoppingToken);
+
+				// Esperar antes de la siguiente iteración
+				await Task.Delay(TimeSpan.FromMinutes(3), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -558,7 +577,12 @@ public class Worker : BackgroundService
         var respuestaObtenerDoctor = new RespuestaObtenerDoctorModel();
         respuestaObtenerDoctor.doctor = await objDOCTORES.ConsultarPorId(idDoctor);
         respuestaObtenerDoctor.totalPacientes = await objAname.ConsultarTotalPacientesPorDoctor(idDoctor);
-        await _hubConnection.InvokeAsync("RespuestaObtenerDoctor", clientId, JsonConvert.SerializeObject(respuestaObtenerDoctor));
+
+		var objInformacionReportes = new TINFORMACIONREPORTESServicios();
+		var objInfoRep = await objInformacionReportes.ConsultarPorId(respuestaObtenerDoctor.doctor.IDREPORTE ?? 0);
+        respuestaObtenerDoctor.facturaElectronica = objInfoRep.PROVEEDOR_FE == "DATAICO";
+
+		await _hubConnection.InvokeAsync("RespuestaObtenerDoctor", clientId, JsonConvert.SerializeObject(respuestaObtenerDoctor));
     }
 
     public async Task ObtenerDoctorSiLoCambian(string clientId, int idDoctor)
@@ -568,7 +592,13 @@ public class Worker : BackgroundService
         var respuestaObtenerDoctor = new RespuestaObtenerDoctorModel();
         respuestaObtenerDoctor.doctor = await objDOCTORES.ConsultarPorId(idDoctor);
         respuestaObtenerDoctor.totalPacientes = await objAname.ConsultarTotalPacientesPorDoctor(idDoctor);
-        await _hubConnection.InvokeAsync("RespuestaObtenerDoctorSiLoCambian", clientId, JsonConvert.SerializeObject(respuestaObtenerDoctor));
+
+		var objInformacionReportes = new TINFORMACIONREPORTESServicios();
+		var objInfoRep = await objInformacionReportes.ConsultarPorId(respuestaObtenerDoctor.doctor.IDREPORTE ?? 0);
+		respuestaObtenerDoctor.facturaElectronica = objInfoRep.PROVEEDOR_FE == "DATAICO";
+
+
+		await _hubConnection.InvokeAsync("RespuestaObtenerDoctorSiLoCambian", clientId, JsonConvert.SerializeObject(respuestaObtenerDoctor));
     }
 
 
@@ -1327,7 +1357,7 @@ public class Worker : BackgroundService
     }
 
 
-    /*public async Task GenerarRips(string clientId, string objGenerarRips)
+	/*public async Task GenerarRips(string clientId, string objGenerarRips)
     {
         var objGenerarRipsModel = JsonConvert.DeserializeObject<GenerarRipsModel>(objGenerarRips);
         var infoReportes = _lnRips.InformacionReportesXId(objGenerarRipsModel.IDREPORTE);
@@ -1348,7 +1378,7 @@ public class Worker : BackgroundService
         await _hubConnection.InvokeAsync("RespuestaGenerarRips", clientId, respuestaSerializadaComprimida);// Notificar a Angular a través de SignalR
     }*/
 
-    public async Task GenerarRips(string clientId, int identificador, string objGenerarRips)
+	/*public async Task GenerarRips(string clientId, int identificador, string objGenerarRips)
     {
         // Deserialización en un hilo separado para evitar bloqueos
         var objGenerarRipsModel = await Task.Run(() =>
@@ -1365,9 +1395,9 @@ public class Worker : BackgroundService
                                         objGenerarRipsModel.IDDOCTOR,
                                         objGenerarRipsModel.EXTRANJERO
                                     );
-
-        // Mapear datos
-        ripsModel = _lnRips.MapearRipsSinFactura(ripsModel, (infoReportes.CONFACTURA ?? 0) == 1);
+		var proveedorFe = infoReportes?.PROVEEDOR_FE ?? "";
+		// Mapear datos
+		ripsModel = _lnRips.MapearRipsSinFactura(ripsModel, (infoReportes.CONFACTURA ?? 0) == 1, proveedorFe);
 
         // Serialización optimizada
         var jsonRips = JsonConvert.SerializeObject(ripsModel);
@@ -1378,11 +1408,114 @@ public class Worker : BackgroundService
         // Notificar a Angular a través de SignalR
         await _hubConnection.InvokeAsync("RespuestaGenerarRips", clientId, respuesta);
         
-    }
+    }*/
 
-    
-    // Conversor para manejar TimeSpan en JSON
-    /*public class TimeSpanConverterJson : JsonConverter
+	public async Task GenerarRips(string clientId, int identificador, string objGenerarRips)
+	{
+		// Settings camelCase para que Angular lea "accion", "total", etc.
+		var settings = new JsonSerializerSettings
+		{
+			ContractResolver = new CamelCasePropertyNamesContractResolver()
+		};
+
+		async Task EmitirProgresoAsync(ProgresoRipsDto p)
+		{
+			try
+			{
+				p.Accion = "GENERAR";
+				var json = JsonConvert.SerializeObject(p, settings);
+				await _hubConnection.InvokeAsync("ProgresoRips", clientId, json);
+			}
+			catch
+			{
+				// no tumbes la generación si falla el progreso
+			}
+		}
+
+		await EmitirProgresoAsync(new ProgresoRipsDto
+		{
+			Total = 0,
+			Procesadas = 0,
+			Exitosas = 0,
+			Fallidas = 0,
+			Mensaje = "Iniciando generación..."
+		});
+
+		// Deserialización
+		var objGenerarRipsModel = await Task.Run(() =>
+			JsonConvert.DeserializeObject<GenerarRipsModel>(objGenerarRips));
+
+		await EmitirProgresoAsync(new ProgresoRipsDto
+		{
+			Mensaje = "Consultando datos..."
+		});
+
+		// Consultas
+		var infoReportes = _lnRips.InformacionReportesXId(objGenerarRipsModel.IDREPORTE);
+
+		var ripsModel = _lnRips.ConsultarRips(
+			objGenerarRipsModel.FECHAINI,
+			objGenerarRipsModel.FECHAFIN,
+			objGenerarRipsModel.EPS,
+			objGenerarRipsModel.FACTURA,
+			objGenerarRipsModel.IDREPORTE,
+			objGenerarRipsModel.IDDOCTOR,
+			objGenerarRipsModel.EXTRANJERO
+		);
+
+		bool conFactura = (infoReportes?.CONFACTURA ?? 0) == 1;
+		var proveedorFe = infoReportes?.PROVEEDOR_FE ?? "";
+
+		// Progreso inicial “por cantidad”
+		int total = ripsModel?.Count ?? 0;
+
+		await EmitirProgresoAsync(new ProgresoRipsDto
+		{
+			Total = total,
+			Procesadas = 0,
+			Exitosas = 0,
+			Fallidas = 0,
+			Mensaje = conFactura ? "Cargando XML de facturas..." : "Preparando RIPS sin factura..."
+		});
+
+		// ✅ Mapear con progreso real (throttle)
+		ripsModel = _lnRips.MapearRipsSinFacturaConProgreso(
+			ripsModel,
+			conFactura,
+			proveedorFe,
+			async (p) =>
+			{
+				// Asegura que sea GENERAR y envía al front
+				await EmitirProgresoAsync(p);
+			}
+		);
+
+		await EmitirProgresoAsync(new ProgresoRipsDto
+		{
+			Total = total,
+			Procesadas = total,
+			Mensaje = "Construyendo JSON..."
+		});
+
+		// Serialización (esto puede demorar mucho si el JSON es grande)
+		var jsonRips = JsonConvert.SerializeObject(ripsModel);
+
+		await EmitirProgresoAsync(new ProgresoRipsDto
+		{
+			Total = 1,
+			Procesadas = 1,
+			Exitosas = 1,
+			Fallidas = 0,
+			Mensaje = "Generación finalizada."
+		});
+
+		await _hubConnection.InvokeAsync("RespuestaGenerarRips", clientId, jsonRips);
+	}
+
+
+
+	// Conversor para manejar TimeSpan en JSON
+	/*public class TimeSpanConverterJson : JsonConverter
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
@@ -1398,29 +1531,125 @@ public class Worker : BackgroundService
     }*/
 
 
-    public async Task PresentarRips(string clientId, int identificador, string objPresentarRips)
-    {
-        var objPresentarRipsModel = JsonConvert.DeserializeObject<GenerarRipsModel>(objPresentarRips);
-        var infoReportes = _lnRips.InformacionReportesXId(objPresentarRipsModel.IDREPORTE);
-        var token = _lnRips.obtenerTokenRips(infoReportes);
-        var ripsModel = _lnRips.ConsultarRips(
-                                             objPresentarRipsModel.FECHAINI,
-                                             objPresentarRipsModel.FECHAFIN,
-                                             objPresentarRipsModel.EPS,
-                                             objPresentarRipsModel.FACTURA,
-                                             objPresentarRipsModel.IDREPORTE,
-                                             objPresentarRipsModel.IDDOCTOR,
-                                             objPresentarRipsModel.EXTRANJERO
-                                            );
-        var result = _lnRips.CargarRipsSinFactura(ripsModel, token, (infoReportes.CONFACTURA ?? 0) == 1);
-       
-        var jsonRips = JsonConvert.SerializeObject(result);
-        string respuesta = jsonRips;
-        await _hubConnection.InvokeAsync("RespuestaPresentarRips", clientId, respuesta);// Notificar a Angular a través de SignalR
-    }
+	/*public async Task PresentarRips(string clientId, int identificador, string objPresentarRips)
+	{
+		var objPresentarRipsModel = JsonConvert.DeserializeObject<GenerarRipsModel>(objPresentarRips);
 
-    
-    public async Task ObtenerFacturasCreadas(string clientId, string Factura)
+		var infoReportes = _lnRips.InformacionReportesXId(objPresentarRipsModel.IDREPORTE);
+		var token = _lnRips.obtenerTokenRips(infoReportes);
+
+		var ripsModel = _lnRips.ConsultarRips(
+			objPresentarRipsModel.FECHAINI,
+			objPresentarRipsModel.FECHAFIN,
+			objPresentarRipsModel.EPS,
+			objPresentarRipsModel.FACTURA,
+			objPresentarRipsModel.IDREPORTE,
+			objPresentarRipsModel.IDDOCTOR,
+			objPresentarRipsModel.EXTRANJERO
+		);
+
+		bool conFactura = (infoReportes.CONFACTURA ?? 0) == 1;
+		var proveedorFe = infoReportes?.PROVEEDOR_FE ?? "";
+
+		try
+		{
+			ripsModel = _lnRips.MapearRipsSinFactura(ripsModel, conFactura, proveedorFe);
+		}
+		catch
+		{
+			// No tumbar el proceso: si algo falla cargando XML, se sigue sin xmlFevFile
+		}
+
+		var settings = new JsonSerializerSettings
+		{
+			ContractResolver = new CamelCasePropertyNamesContractResolver()
+		};
+
+		// ✅ Callback de progreso que reenvía al HUB (y el hub al navegador)
+		Func<ProgresoRipsDto, Task> reportProgress = async (p) =>
+		{
+			try
+			{
+				var json = JsonConvert.SerializeObject(p, settings);
+				await _hubConnection.InvokeAsync("ProgresoRips", clientId, json);
+			}
+			catch
+			{
+				// Si falla el progreso, NO debes tumbar la presentación
+			}
+		};
+
+		// ✅ Ahora sí: esperamos la lista real + va reportando progreso
+		var result = await _lnRips.CargarRipsSinFacturaAsync(
+			ripsModel,
+			token,
+			conFactura,
+			reportProgress
+		);
+
+		var respuesta = JsonConvert.SerializeObject(result);
+		await _hubConnection.InvokeAsync("RespuestaPresentarRips", clientId, respuesta);
+	}*/
+
+	// ✅ PRESENTAR: NO carga XML aquí (para no duplicar y para que el progreso sea real)
+	//    Pasa proveedorFe a CargarRipsSinFacturaAsync, que es donde se toma la decisión FacturaTec/Dataico.
+	public async Task PresentarRips(string clientId, int identificador, string objPresentarRips)
+	{
+		var objPresentarRipsModel = JsonConvert.DeserializeObject<GenerarRipsModel>(objPresentarRips);
+
+		var infoReportes = _lnRips.InformacionReportesXId(objPresentarRipsModel.IDREPORTE);
+		var token = _lnRips.obtenerTokenRips(infoReportes);
+
+		var ripsModel = _lnRips.ConsultarRips(
+			objPresentarRipsModel.FECHAINI,
+			objPresentarRipsModel.FECHAFIN,
+			objPresentarRipsModel.EPS,
+			objPresentarRipsModel.FACTURA,
+			objPresentarRipsModel.IDREPORTE,
+			objPresentarRipsModel.IDDOCTOR,
+			objPresentarRipsModel.EXTRANJERO
+		);
+
+		bool conFactura = (infoReportes?.CONFACTURA ?? 0) == 1;
+		var proveedorFe = infoReportes?.PROVEEDOR_FE ?? "";
+
+		var settings = new JsonSerializerSettings
+		{
+			ContractResolver = new CamelCasePropertyNamesContractResolver()
+		};
+
+		// ✅ Callback de progreso que reenvía al HUB (y el hub al navegador)
+		Func<ProgresoRipsDto, Task> reportProgress = async (p) =>
+		{
+			try
+			{
+				var json = JsonConvert.SerializeObject(p, settings);
+				await _hubConnection.InvokeAsync("ProgresoRips", clientId, json);
+			}
+			catch
+			{
+				// Si falla el progreso, NO debes tumbar la presentación
+			}
+		};
+
+		// ✅ Ahora sí: esperamos la lista real + va reportando progreso (incluye carga XML si aplica)
+		var result = await _lnRips.CargarRipsSinFacturaAsync(
+			ripsModel,
+			token,
+			conFactura,
+			proveedorFe,
+			reportProgress
+		);
+
+		var respuesta = JsonConvert.SerializeObject(result);
+		await _hubConnection.InvokeAsync("RespuestaPresentarRips", clientId, respuesta);
+	}
+
+
+
+
+
+	public async Task ObtenerFacturasCreadas(string clientId, string Factura)
     {
         try
         {
@@ -1470,7 +1699,7 @@ public class Worker : BackgroundService
 		}
 	}
 
-	public async Task PresentarFacturasEnDian(string clienteIdDestino, string payloadJson, CancellationToken ct = default)
+	/*public async Task PresentarFacturasEnDian(string clienteIdDestino, string payloadJson, CancellationToken ct = default)
 	{
 		PresentarFacturasPayload payload;
 		try
@@ -1602,24 +1831,284 @@ public class Worker : BackgroundService
 			fail = resultados.Count - okCount,
 			resultados = resultados
 		}, ct);
+	}*/
+
+	public async Task PresentarFacturasEnDian(string clienteIdDestino, string payloadJson, CancellationToken ct = default)
+	{
+		PresentarFacturasPayload payload;
+		try
+		{
+			payload = JsonConvert.DeserializeObject<PresentarFacturasPayload>(payloadJson) ?? new PresentarFacturasPayload();
+		}
+		catch (Exception ex)
+		{
+			await EmitResumenAsync(clienteIdDestino, new ResumenPresentacionLote
+			{
+				total = 0,
+				ok = 0,
+				fail = 1,
+				resultados = new List<ResultadoPresentacionItem>
+			{
+				new ResultadoPresentacionItem { ok = false, mensaje = "Payload inválido: " + ex.Message }
+			}
+			}, ct);
+			return;
+		}
+
+		var resultados = new List<ResultadoPresentacionItem>();
+		int okCount = 0;
+		int procesadas = 0;
+		int total = payload.items?.Count ?? 0;
+        int? idSede = payload.sedeId;
+
+		// =========================
+		// ✅ Determinar operationType SIEMPRE
+		// =========================
+		string opString = (payload.items != null && payload.items.Count > 0)
+			? (payload.items[0].operation ?? "").Trim()
+			: "";
+
+		HealthOperationType operationType;
+		switch (opString.ToUpperInvariant())
+		{
+			case "SS_RECAUDO":
+				operationType = HealthOperationType.Recaudo;
+				break;
+			case "SS_CUFE":
+				operationType = HealthOperationType.Cufe;
+				break;
+			case "SS_REPORTE":
+				operationType = HealthOperationType.Reporte;
+				break;
+			case "SS_SIN_APORTE":
+			default:
+				operationType = HealthOperationType.SinAporte;
+				opString = "SS_SIN_APORTE";
+				break;
+		}
+
+		var settings = new JsonSerializerSettings
+		{
+			ContractResolver = new CamelCasePropertyNamesContractResolver()
+		};
+
+		// =========================
+		// ✅ Frecuencia (cantidad + tiempo)
+		// =========================
+		int cada = total <= 200 ? 10 : total <= 1000 ? 25 : 50;
+
+		var sw = Stopwatch.StartNew();
+		long lastMs = -999999;
+
+		async Task EmitirProgresoAsync(string? ultimoDoc, string mensaje, string? lastExternalId = null, bool force = false)
+		{
+			var nowMs = sw.ElapsedMilliseconds;
+
+			bool porTiempo = (nowMs - lastMs) >= 700;
+			bool porCantidad = (procesadas == 1) || (procesadas % cada == 0) || (procesadas == total);
+
+			if (!force && !porTiempo && !porCantidad) return;
+
+			lastMs = nowMs;
+
+			var dto = new
+			{
+				accion = "PRESENTAR_DIAN",
+				total = total,
+				procesadas = procesadas,
+				exitosas = okCount,
+				fallidas = procesadas - okCount,
+				ultimoDocumento = ultimoDoc,
+				mensaje = mensaje,
+				lastExternalId = lastExternalId
+			};
+
+			var json = JsonConvert.SerializeObject(dto, settings);
+
+			// Hub: RespuestaProgresoPresentacion -> Front: ProgresoPresentacionFactura
+			await _hubConnection.InvokeAsync("RespuestaProgresoPresentacion", clienteIdDestino, json, ct);
+		}
+
+		// ✅ Progreso inicial
+		await EmitirProgresoAsync(null, "Iniciando presentación DIAN...", force: true);
+
+		using var scope = _scopeFactory.CreateScope();
+		var repo = scope.ServiceProvider.GetRequiredService<FacturacionSaludRepository>();
+
+		foreach (var item in payload.items ?? new List<PresentarFacturaItem>())
+		{
+			ct.ThrowIfCancellationRequested();
+
+			int tipoFactura = item.tipoFactura ?? 1;
+
+			var resItem = new ResultadoPresentacionItem
+			{
+				idRelacion = item.idRelacion,
+				factura = item.factura,
+				codigoPrestador = item.codigoPrestadorPPAL
+			};
+
+			// ✅ NO usamos item.numeroFactura porque puede no tener getter
+			string ultimoDoc = item.factura ?? item.idRelacion.ToString();
+			string? externalId = null;
+
+			try
+			{
+				// 1) Construir DTO
+				var dto = await repo.BuildHealthInvoiceDtoAsync(
+					item.idRelacion,
+					tipoFactura,
+					operationType,
+					ct);
+
+				var bodyJson = JsonConvert.SerializeObject(dto);
+
+				// 2) Enviar
+				(bool ok, string mensaje, string? extId) =
+					await _api.PostHealthInvoiceAsync(item.codigoPrestadorPPAL, bodyJson, idSede, ct);
+
+				externalId = extId;
+
+				resItem.ok = ok;
+				resItem.mensaje = ok ? "ENVIADA" : mensaje;
+				resItem.externalId = extId;
+
+				if (ok) okCount++;
+
+				// 3) Guardar UUID si OK
+				if (ok && !string.IsNullOrWhiteSpace(extId))
+				{
+					await repo.MarcarTransaccionIdAsync(item.idRelacion, tipoFactura, extId!, ct);
+				}
+			}
+			catch (Exception ex)
+			{
+				resItem.ok = false;
+				resItem.mensaje = "Excepción: " + ex.Message;
+			}
+
+			resultados.Add(resItem);
+			procesadas++;
+
+			// ✅ Progreso en caliente (acumulado)
+			await EmitirProgresoAsync(
+				ultimoDoc,
+				resItem.ok ? "Presentando DIAN: OK" : "Presentando DIAN: FAIL",
+				lastExternalId: externalId
+			);
+		}
+
+		// ✅ Progreso final
+		await EmitirProgresoAsync(null, "Finalizando presentación DIAN...", force: true);
+
+		// ✅ Resumen final
+		await EmitResumenAsync(clienteIdDestino, new ResumenPresentacionLote
+		{
+			total = resultados.Count,
+			ok = okCount,
+			fail = resultados.Count - okCount,
+			resultados = resultados
+		}, ct);
 	}
 
 	// Helpers (sin cambios)
-	private async Task EmitProgresoAsync(string clienteIdDestino, object progresoObj, CancellationToken ct)
+	/*private async Task EmitProgresoAsync(string clienteIdDestino, object progresoObj, CancellationToken ct)
 	{
 		var progresoJson = JsonConvert.SerializeObject(progresoObj);
 		await _hubConnection.InvokeAsync("RespuestaProgresoPresentacion", clienteIdDestino, progresoJson, ct);
-	}
+	}*/
 
 	private async Task EmitResumenAsync(string clienteIdDestino, ResumenPresentacionLote resumen, CancellationToken ct)
 	{
-		var resumenJson = JsonConvert.SerializeObject(resumen);
+		var settings = new JsonSerializerSettings
+		{
+			ContractResolver = new CamelCasePropertyNamesContractResolver()
+		};
+
+		var resumenJson = JsonConvert.SerializeObject(resumen, settings);
 		await _hubConnection.InvokeAsync("RespuestaPresentarFacturasEnDian", clienteIdDestino, resumenJson, ct);
+	}
+
+	public async Task DescargarJsonFacturaPendiente(string clienteIdDestino, string payloadJson, CancellationToken ct = default)
+	{
+		PresentarFacturasPayload payload;
+
+		try
+		{
+			payload = JsonConvert.DeserializeObject<PresentarFacturasPayload>(payloadJson)
+					  ?? new PresentarFacturasPayload();
+		}
+		catch (Exception ex)
+		{
+			await _hubConnection.InvokeAsync(
+				"RespuestaDescargarJsonFacturaPendiente",
+				clienteIdDestino,
+				JsonConvert.SerializeObject(new { error = "Payload inválido", detail = ex.Message }),
+				ct
+			);
+			return;
+		}
+
+		// ✅ En este caso es 1 factura (individual)
+		var item = payload.items?.FirstOrDefault();
+		if (item == null)
+		{
+			await _hubConnection.InvokeAsync(
+				"RespuestaDescargarJsonFacturaPendiente",
+				clienteIdDestino,
+				JsonConvert.SerializeObject(new { error = "No hay items en payload" }),
+				ct
+			);
+			return;
+		}
+
+		int tipoFactura = item.tipoFactura ?? 1;
+
+		// Determinar operationType igual que ya lo haces
+		string opString = (item.operation ?? "").Trim();
+		HealthOperationType operationType = opString.ToUpperInvariant() switch
+		{
+			"SS_RECAUDO" => HealthOperationType.Recaudo,
+			"SS_CUFE" => HealthOperationType.Cufe,
+			"SS_REPORTE" => HealthOperationType.Reporte,
+			_ => HealthOperationType.SinAporte
+		};
+
+		using var scope = _scopeFactory.CreateScope();
+		var repo = scope.ServiceProvider.GetRequiredService<FacturacionSaludRepository>();
+
+		try
+		{
+			var dto = await repo.BuildHealthInvoiceDtoAsync(item.idRelacion, tipoFactura, operationType, ct);
+
+			// ✅ mismo JSON que enviarías a Dataico
+			var json = JsonConvert.SerializeObject(dto, new JsonSerializerSettings
+			{
+				ContractResolver = new CamelCasePropertyNamesContractResolver(),
+				Formatting = Formatting.Indented // bonito para “ver antes”
+			});
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaDescargarJsonFacturaPendiente",
+				clienteIdDestino,
+				json,
+				ct
+			);
+		}
+		catch (Exception ex)
+		{
+			await _hubConnection.InvokeAsync(
+				"RespuestaDescargarJsonFacturaPendiente",
+				clienteIdDestino,
+				JsonConvert.SerializeObject(new { error = "Error construyendo JSON", detail = ex.Message }),
+				ct
+			);
+		}
 	}
 
 
 
-	
+
 
 
 

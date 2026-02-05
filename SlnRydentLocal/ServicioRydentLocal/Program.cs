@@ -73,6 +73,8 @@ public class Program
 				services.AddScoped<THISTORIALServicios>();
 				services.AddScoped<T_RIPS_PROCEDIMIENTOSServicios>();
 				services.AddScoped<T_DEFINICION_TRATAMIENTOServicios>();
+				services.AddScoped<IRadoQueryService, RadoQueryService>();
+				services.AddHttpClient<IRadoIntegrationService, RadoIntegrationService>();
 
 				// 4) Repos para facturación salud (el que usas en PresentarFacturasEnDian)
 				services.AddScoped<FacturacionSaludRepository>();

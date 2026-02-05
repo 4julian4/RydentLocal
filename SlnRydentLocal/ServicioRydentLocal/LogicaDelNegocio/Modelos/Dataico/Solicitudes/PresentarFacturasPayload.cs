@@ -28,5 +28,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos.Dataico.Solicitudes
 		/// </summary>
 		[JsonProperty("items")]
 		public List<PresentarFacturaItem> items { get; set; } = new();
+		[JsonProperty("sedeId")]
+		public int? sedeId { get; set; }
 	}
 }

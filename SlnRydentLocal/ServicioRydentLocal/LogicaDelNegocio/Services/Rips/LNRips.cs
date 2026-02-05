@@ -1,15 +1,17 @@
-﻿using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
+﻿using FirebirdSql.Data.FirebirdClient;
+using Microsoft.EntityFrameworkCore;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades;
+using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
 using ServicioRydentLocal.LogicaDelNegocio.Facturatech;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Rips;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using FirebirdSql.Data.FirebirdClient;
-using Microsoft.EntityFrameworkCore;
+
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Services.Rips
 {
@@ -87,53 +89,311 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Rips
             return res;
         }
 
-        public async Task<List<RespuestaCargarRipsModel>> CargarRipsSinFacturaAsync(List<transaccionModel> lstRips, string token, bool conFactura)
-        {
-            var respuestaCargarRipsSinFactura = new List<RespuestaCargarRipsModel>();
-            HttpClientHandler handler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = (message, cert, chain, sslPolicyErrors) => true
-            };
-            HttpClient client = new HttpClient(handler);
-            string url = conFactura ? $"{urlApiBase}/PaquetesFevRips/CargarFevRips" : $"{urlApiBase}/PaquetesFevRips/CargarRipsSinFactura";
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+		/*public async Task<List<RespuestaCargarRipsModel>> CargarRipsSinFacturaAsync(
+	        List<transaccionModel> lstRips,
+	        string token,
+	        bool conFactura,
+	        Func<ProgresoRipsDto, Task>? reportProgress = null,
+	        CancellationToken ct = default)
+		{
+			var respuestaLista = new List<RespuestaCargarRipsModel>();
 
-            foreach (var objRIPS in lstRips)
-            {
-                if (!conFactura)
-                {
-                    objRIPS.rips.numNota = objRIPS.rips.numFactura;
-                    objRIPS.rips.tipoNota = "RS";
-                    objRIPS.rips.numFactura = null;
-                }
-                else
-                {
-                    var fac = new LNDianGeneral();
-                    objRIPS.xmlFevFile = fac.FacturaXMLBase64XId(objRIPS.rips.idRelacion ?? 0);
-                }
+			var handler = new HttpClientHandler
+			{
+				ServerCertificateCustomValidationCallback = (message, cert, chain, sslPolicyErrors) => true
+			};
 
-                string json = System.Text.Json.JsonSerializer.Serialize(objRIPS);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(url, content); // Usando await aquí
+			using var client = new HttpClient(handler);
 
-                var resBody = await response.Content.ReadAsStringAsync(); // Usando await aquí
+			var url = conFactura
+				? $"{urlApiBase}/PaquetesFevRips/CargarFevRips"
+				: $"{urlApiBase}/PaquetesFevRips/CargarRipsSinFactura";
 
-                if (!string.IsNullOrEmpty(resBody))
-                {
-                    var opciones = new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    };
-                    RespuestaCargarRipsModel resultado = JsonSerializer.Deserialize<RespuestaCargarRipsModel>(resBody, opciones);
-                    respuestaCargarRipsSinFactura.Add(resultado);
-                }
-            }
+			client.DefaultRequestHeaders.Authorization =
+				new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-            return respuestaCargarRipsSinFactura;
-        }
+			// ✅ Para no estar creando esto por cada item
+			var opcionesJson = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+			// ✅ Si conFactura, crea el helper una sola vez
+			LNDianGeneral? fac = conFactura ? new LNDianGeneral() : null;
+
+			int total = lstRips?.Count ?? 0;
+			int procesadas = 0;
+			int ok = 0;
+			int fail = 0;
+
+			// ✅ Frecuencia “segura” para SignalR (por cantidad)
+			int cada = total <= 200 ? 10 : total <= 1000 ? 25 : 50;
+
+			// ✅ Frecuencia “segura” por TIEMPO (evita spam si todo responde muy rápido)
+			var sw = Stopwatch.StartNew();
+			long lastMs = -999999;
+
+			async Task EmitirProgresoAsync(string? ultimoDoc, string mensaje, bool force = false)
+			{
+				if (reportProgress == null) return;
+
+				// manda si:
+				// - force (inicio/fin)
+				// - o cada N items
+				// - o si pasó >= 700ms desde el último envío
+				var nowMs = sw.ElapsedMilliseconds;
+				bool porTiempo = (nowMs - lastMs) >= 700;
+				bool porCantidad = (procesadas == 1) || (procesadas % cada == 0) || (procesadas == total);
+
+				if (force || porCantidad || porTiempo)
+				{
+					lastMs = nowMs;
+
+					var payload = new ProgresoRipsDto
+					{
+						Accion = "PRESENTAR",
+						Total = total,
+						Procesadas = procesadas,
+						Exitosas = ok,
+						Fallidas = fail,
+						UltimoDocumento = ultimoDoc,
+						Mensaje = mensaje
+					};
+
+					await reportProgress(payload);
+				}
+			}
+
+			// ✅ Progreso inicial
+			await EmitirProgresoAsync(null, "Iniciando presentación...", force: true);
+
+			foreach (var objRIPS in lstRips)
+			{
+				ct.ThrowIfCancellationRequested();
+				procesadas++;
+
+				// Para mostrar “último doc”
+				var ultimoDoc = objRIPS?.rips?.numFactura ?? objRIPS?.rips?.numNota;
+
+				try
+				{
+					if (!conFactura)
+					{
+						objRIPS.rips.numNota = objRIPS.rips.numFactura;
+						objRIPS.rips.tipoNota = "RS";
+						objRIPS.rips.numFactura = null;
+					}
+					else
+					{
+						// ⚠️ OJO: esto puede ser pesado si el XML se consulta por red por cada item.
+						// Si FacturaBase64XId hace HTTP, considera cache o reuso interno.
+						objRIPS.xmlFevFile = fac!.FacturaBase64XId(objRIPS.rips.idRelacion ?? 0);
+					}
+
+					string json = System.Text.Json.JsonSerializer.Serialize(objRIPS);
+					using var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+					using var httpResp = await client.PostAsync(url, content, ct);
+					var body = await httpResp.Content.ReadAsStringAsync(ct);
+
+					if (!string.IsNullOrWhiteSpace(body))
+					{
+						var resultado = JsonSerializer.Deserialize<RespuestaCargarRipsModel>(body, opcionesJson);
+
+						if (resultado != null)
+						{
+							respuestaLista.Add(resultado);
+
+							// Cuenta OK / FAIL con tolerancia
+							if (resultado.resultState == true) ok++;
+							else fail++;
+						}
+						else
+						{
+							fail++;
+						}
+					}
+					else
+					{
+						fail++;
+					}
+				}
+				catch
+				{
+					fail++;
+					// opcional: podrías agregar un “resultado” de error para que el frontend lo vea en el JSON final
+				}
+
+				// ✅ Progreso en caliente
+				await EmitirProgresoAsync(ultimoDoc, "Enviando a SISPRO...");
+			}
+
+			// ✅ Progreso final
+			await EmitirProgresoAsync(null, "Finalizando...", force: true);
+
+			return respuestaLista;
+		}*/
+
+		// ✅ CARGAR/PRESENTAR: aquí se toma la decisión FACTURATEC vs DATAICO usando proveedorFe
+		//    + progreso real (cargando XML / enviando) sin estallar SignalR (throttle por cantidad y tiempo).
+		public async Task<List<RespuestaCargarRipsModel>> CargarRipsSinFacturaAsync(
+			List<transaccionModel> lstRips,
+			string token,
+			bool conFactura,
+			string proveedorFe,
+			Func<ProgresoRipsDto, Task>? reportProgress = null,
+			CancellationToken ct = default)
+		{
+			var respuestaLista = new List<RespuestaCargarRipsModel>();
+
+			var handler = new HttpClientHandler
+			{
+				ServerCertificateCustomValidationCallback = (message, cert, chain, sslPolicyErrors) => true
+			};
+
+			using var client = new HttpClient(handler);
+
+			var url = conFactura
+				? $"{urlApiBase}/PaquetesFevRips/CargarFevRips"
+				: $"{urlApiBase}/PaquetesFevRips/CargarRipsSinFactura";
+
+			client.DefaultRequestHeaders.Authorization =
+				new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+			var opcionesJson = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+			// ✅ Helper una sola vez si se requiere factura
+			LNDianGeneral? fac = conFactura ? new LNDianGeneral() : null;
+
+			var proveedor = (proveedorFe ?? "").Trim().ToUpperInvariant();
+
+			int total = lstRips?.Count ?? 0;
+			int procesadas = 0;
+			int ok = 0;
+			int fail = 0;
+
+			// ✅ Frecuencia “segura” para SignalR (por cantidad)
+			int cada = total <= 200 ? 10 : total <= 1000 ? 25 : 50;
+
+			// ✅ Frecuencia “segura” por TIEMPO (evita spam si todo responde muy rápido)
+			var sw = Stopwatch.StartNew();
+			long lastMs = -999999;
+
+			async Task EmitirProgresoAsync(string? ultimoDoc, string mensaje, bool force = false)
+			{
+				if (reportProgress == null) return;
+
+				var nowMs = sw.ElapsedMilliseconds;
+				bool porTiempo = (nowMs - lastMs) >= 700;
+				bool porCantidad = (procesadas == 1) || (procesadas % cada == 0) || (procesadas == total);
+
+				if (force || porCantidad || porTiempo)
+				{
+					lastMs = nowMs;
+
+					var payload = new ProgresoRipsDto
+					{
+						Accion = "PRESENTAR",
+						Total = total,
+						Procesadas = procesadas,
+						Exitosas = ok,
+						Fallidas = fail,
+						UltimoDocumento = ultimoDoc,
+						Mensaje = mensaje
+					};
+
+					await reportProgress(payload);
+				}
+			}
+
+			// ✅ Progreso inicial
+			await EmitirProgresoAsync(null, "Iniciando presentación...", force: true);
+
+			foreach (var objRIPS in lstRips)
+			{
+				ct.ThrowIfCancellationRequested();
+				procesadas++;
+
+				var ultimoDoc = objRIPS?.rips?.numFactura ?? objRIPS?.rips?.numNota;
+
+				try
+				{
+					if (!conFactura)
+					{
+						objRIPS.rips.numNota = objRIPS.rips.numFactura;
+						objRIPS.rips.tipoNota = "RS";
+						objRIPS.rips.numFactura = null;
+						objRIPS.xmlFevFile = null;
+					}
+					else
+					{
+						// ✅ Cargar XML SOLO si hace falta (evita doble carga si ya viene en objRIPS)
+						if (string.IsNullOrWhiteSpace(objRIPS.xmlFevFile))
+						{
+							await EmitirProgresoAsync(ultimoDoc, "Cargando XML de la factura...");
+
+							var idRel = objRIPS.rips.idRelacion ?? 0;
+
+							if (proveedor == "FACTURATEC")
+							{
+								objRIPS.xmlFevFile = fac!.FacturaXMLBase64XId_FacturaTec(idRel);
+							}
+							else if (proveedor == "DATAICO")
+							{
+								objRIPS.xmlFevFile = fac!.FacturaXMLBase64XId_Dataico(idRel);
+							}
+							else
+							{
+								objRIPS.xmlFevFile = null;
+							}
+						}
+					}
+
+					// ✅ Enviar
+					await EmitirProgresoAsync(ultimoDoc, "Enviando a SISPRO...");
+
+					string json = System.Text.Json.JsonSerializer.Serialize(objRIPS);
+					using var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+					using var httpResp = await client.PostAsync(url, content, ct);
+					var body = await httpResp.Content.ReadAsStringAsync(ct);
+
+					if (!string.IsNullOrWhiteSpace(body))
+					{
+						var resultado = JsonSerializer.Deserialize<RespuestaCargarRipsModel>(body, opcionesJson);
+
+						if (resultado != null)
+						{
+							respuestaLista.Add(resultado);
+
+							if (resultado.resultState == true) ok++;
+							else fail++;
+						}
+						else
+						{
+							fail++;
+						}
+					}
+					else
+					{
+						fail++;
+					}
+				}
+				catch
+				{
+					fail++;
+				}
+
+				// ✅ Progreso en caliente (con contadores actualizados)
+				await EmitirProgresoAsync(ultimoDoc, $"Procesando... ({procesadas}/{total})");
+			}
+
+			// ✅ Progreso final
+			await EmitirProgresoAsync(null, "Finalizando...", force: true);
+
+			return respuestaLista;
+		}
 
 
-        public List<RespuestaCargarRipsModel> CargarRipsSinFactura(List<transaccionModel> lstRips, string token, bool conFactura)
+
+		public List<RespuestaCargarRipsModel> CargarRipsSinFactura(List<transaccionModel> lstRips, string token, bool conFactura)
         {
             var respuestaCargarRipsSinFactura = new List<RespuestaCargarRipsModel>();
             HttpClientHandler handler = new HttpClientHandler
@@ -185,9 +445,10 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Rips
         }
 
 
-         public List<transaccionModel> MapearRipsSinFactura(List<transaccionModel> lstRips, bool conFactura)
+		/* public List<transaccionModel> MapearRipsSinFactura(List<transaccionModel> lstRips, bool conFactura, string proveedorFe)
          {
-             foreach (var objRIPS in lstRips)
+			var proveedor = (proveedorFe ?? "").Trim().ToUpperInvariant();
+			foreach (var objRIPS in lstRips)
              {
                  if (!conFactura)
                  {
@@ -205,9 +466,149 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Rips
 
              }
              return lstRips;
-         }
+         }*/
 
-        public List<transaccionModel> MapearRipsSinFacturaAsync(List<transaccionModel> lstRips, bool conFactura)
+		public List<transaccionModel> MapearRipsSinFactura(
+	        List<transaccionModel> lstRips,
+	        bool conFactura,
+	        string proveedorFe)
+		{
+			var proveedor = (proveedorFe ?? "").Trim().ToUpperInvariant();
+
+			// ✅ Instancia una sola vez (no dentro del foreach)
+			var fac = new LNDianGeneral();
+
+			foreach (var objRIPS in lstRips)
+			{
+				if (!conFactura)
+				{
+					objRIPS.rips.numNota = objRIPS.rips.numFactura;
+					objRIPS.rips.tipoNota = "RS";
+					objRIPS.rips.numFactura = null;
+					objRIPS.xmlFevFile = null; // coherente: no hay factura/FEV
+				}
+				else
+				{
+					var idRel = objRIPS.rips.idRelacion ?? 0;
+
+					// ✅ Elegir según proveedor
+					if (proveedor == "FACTURATEC")
+					{
+						objRIPS.xmlFevFile = fac.FacturaXMLBase64XId_FacturaTec(idRel);
+					}
+					else if (proveedor == "DATAICO")
+					{
+						objRIPS.xmlFevFile = fac.FacturaXMLBase64XId_Dataico(idRel);
+					}
+					else
+					{
+						// si viene vacío o no reconocido
+						objRIPS.xmlFevFile = null;
+					}
+				}
+			}
+
+			return lstRips;
+		}
+
+		public List<transaccionModel> MapearRipsSinFacturaConProgreso(
+			List<transaccionModel> lstRips,
+			bool conFactura,
+			string proveedorFe,
+			Func<ProgresoRipsDto, Task>? reportProgress = null,
+			CancellationToken ct = default)
+		{
+			var proveedor = (proveedorFe ?? "").Trim().ToUpperInvariant();
+			var fac = new LNDianGeneral();
+
+			int total = lstRips?.Count ?? 0;
+			int procesadas = 0;
+			int ok = 0;
+			int fail = 0;
+
+			// throttle (igual idea que en Presentar)
+			int cada = total <= 200 ? 10 : total <= 1000 ? 25 : 50;
+
+			var sw = Stopwatch.StartNew();
+			long lastMs = -999999;
+
+			void Emitir(string? ultimoDoc, string mensaje, bool force = false)
+			{
+				if (reportProgress == null) return;
+
+				var nowMs = sw.ElapsedMilliseconds;
+				bool porTiempo = (nowMs - lastMs) >= 700;
+				bool porCantidad = (procesadas == 1) || (procesadas % cada == 0) || (procesadas == total);
+
+				if (force || porCantidad || porTiempo)
+				{
+					lastMs = nowMs;
+
+					_ = reportProgress(new ProgresoRipsDto
+					{
+						Accion = "GENERAR",
+						Total = total,
+						Procesadas = procesadas,
+						Exitosas = ok,
+						Fallidas = fail,
+						UltimoDocumento = ultimoDoc,
+						Mensaje = mensaje
+					});
+				}
+			}
+
+			Emitir(null, "Preparando...", force: true);
+
+			foreach (var objRIPS in lstRips)
+			{
+				ct.ThrowIfCancellationRequested();
+				procesadas++;
+
+				var ultimoDoc = objRIPS?.rips?.numFactura ?? objRIPS?.rips?.numNota;
+
+				try
+				{
+					if (!conFactura)
+					{
+						objRIPS.rips.numNota = objRIPS.rips.numFactura;
+						objRIPS.rips.tipoNota = "RS";
+						objRIPS.rips.numFactura = null;
+						objRIPS.xmlFevFile = null;
+
+						ok++;
+						Emitir(ultimoDoc, "Preparando RIPS sin factura...");
+					}
+					else
+					{
+						var idRel = objRIPS.rips.idRelacion ?? 0;
+
+						if (proveedor == "FACTURATEC")
+							objRIPS.xmlFevFile = fac.FacturaXMLBase64XId_FacturaTec(idRel);
+						else if (proveedor == "DATAICO")
+							objRIPS.xmlFevFile = fac.FacturaXMLBase64XId_Dataico(idRel);
+						else
+							objRIPS.xmlFevFile = null;
+
+						ok++;
+						Emitir(ultimoDoc, "Cargando XML de facturas...");
+					}
+				}
+				catch
+				{
+					fail++;
+					objRIPS.xmlFevFile = null;
+					Emitir(ultimoDoc, "Error cargando XML (se continúa)...");
+				}
+			}
+
+			Emitir(null, "Preparación finalizada.", force: true);
+
+			return lstRips;
+		}
+
+
+
+		public List<transaccionModel> MapearRipsSinFacturaAsync(List<transaccionModel> lstRips, bool conFactura)
         {
             if (conFactura)
             {

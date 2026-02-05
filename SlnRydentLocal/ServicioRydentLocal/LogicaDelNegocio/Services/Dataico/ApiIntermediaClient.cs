@@ -36,7 +36,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Dataico
 		}
 
 		public async Task<(bool ok, string? mensaje, string? externalId)>
-			PostHealthInvoiceAsync(string codigoPrestador, string bodyJson, CancellationToken ct = default)
+			PostHealthInvoiceAsync(string codigoPrestador, string bodyJson,  int? idSede = null, CancellationToken ct = default)
 		{
 			var tenantHeader = string.IsNullOrWhiteSpace(codigoPrestador)
 				? (_cfg["ApiIntermedia:DefaultTenantCode"] ?? string.Empty)
@@ -44,6 +44,10 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Dataico
 
 			using var req = new HttpRequestMessage(HttpMethod.Post, "/api/fes/documents");
 			req.Headers.TryAddWithoutValidation("X-Tenant-Code", tenantHeader);
+			if (idSede.HasValue && idSede.Value > 0)
+			{
+				req.Headers.TryAddWithoutValidation("X-Sede-Id", idSede.Value.ToString());
+			}
 			req.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
 
 			using var res = await _http.SendAsync(req, ct);

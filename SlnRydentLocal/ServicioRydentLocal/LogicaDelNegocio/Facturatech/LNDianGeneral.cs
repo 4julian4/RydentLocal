@@ -1,12 +1,16 @@
-﻿using ServicioRydentLocal.LogicaDelNegocio.Entidades;
+﻿using Microsoft.EntityFrameworkCore;
+using ServicioRydentLocal.LogicaDelNegocio.Entidades;
 using ServicioRydentLocal.LogicaDelNegocio.Entidades.SP;
 using ServicioRydentLocal.LogicaDelNegocio.Facturatech;
 using ServicioRydentLocal.LogicaDelNegocio.Helpers;
 using ServicioRydentLocal.LogicaDelNegocio.Repositorio;
+using ServicioRydentLocal.LogicaDelNegocio.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ServicioRydentLocal.LogicaDelNegocio.Facturatech
@@ -293,5 +297,141 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Facturatech
 			}
 			return mensaje;
 		}
+
+		public string FacturaXMLBase64XId_FacturaTec(int id)
+		{
+			var adicionales = new Adicionales_Abonos_Dian().listarXid(id);
+			if (!(adicionales.Count() > 0)) return null;
+
+			var p = adicionales.FirstOrDefault();
+			var factura = p.factura ?? "";
+			var prefijo = p.prefijo ?? "";
+
+			if (string.IsNullOrEmpty(factura)) return null;
+
+			return new FacturaTec().DescargarXMLFactura(prefijo, factura.Replace(prefijo, ""), p);
+		}
+
+		// Reutilizamos un HttpClient único (importante si vas a pedir muchos XML)
+		private static readonly HttpClient _http = new HttpClient
+		{
+			Timeout = TimeSpan.FromSeconds(60)
+		};
+
+		/// <summary>
+		/// Descarga el XML de la factura desde DATAICO (vía API intermedia)
+		/// y lo retorna como Base64 para anexarlo en xmlFevFile.
+		/// 
+		/// Requiere:
+		/// - T_ADICIONALES_ABONOS.TRANSACCIONID = UUID Dataico
+		/// - TINFORMACIONREPORTES.CODIGO_PRESTADOR_PPAL (tenantCode)
+		/// - Variable de entorno: API_INTERMEDIA_BASE_URL (ej: https://localhost:7226)
+		/// </summary>
+		public string? FacturaXMLBase64XId_Dataico(int id)
+		{
+			try
+			{
+				using (var dbContext = new AppDbContext())
+				{
+					var abono = dbContext.T_ADICIONALES_ABONOS
+						.AsNoTracking()
+						.Where(x => x.IDRELACION == id)
+						.OrderByDescending(x => x.FECHA)
+						.ThenByDescending(x => x.HORA)
+						.FirstOrDefault();
+
+					if (abono == null) return null;
+
+					var uuid = (abono.TRANSACCIONID ?? string.Empty).Trim();
+					if (string.IsNullOrWhiteSpace(uuid)) return null;
+
+					var doctorId = abono.RECIBIDO_POR.HasValue ? abono.RECIBIDO_POR.Value : abono.IDDOCTOR;
+					if (!doctorId.HasValue) return null;
+
+					var idReporte = dbContext.TDATOSDOCTORES
+						.AsNoTracking()
+						.Where(d => d.ID == doctorId.Value)
+						.Select(d => d.IDREPORTE)
+						.FirstOrDefault();
+
+					if (idReporte <= 0) return null;
+
+					var infoReporte = dbContext.TINFORMACIONREPORTES
+						.AsNoTracking()
+						.FirstOrDefault(r => r.ID == idReporte);
+
+					if (infoReporte == null) return null;
+
+					var tenantCode = (infoReporte.CODIGO_PRESTADOR_PPAL ?? infoReporte.CODIGO_PRESTADOR ?? string.Empty).Trim();
+					if (string.IsNullOrWhiteSpace(tenantCode)) return null;
+
+					var baseUrl = GetApiIntermediaBaseUrl();
+					if (string.IsNullOrWhiteSpace(baseUrl)) return null;
+
+					// baseUrl ya viene normalizado a ".../api"
+					var url = $"{baseUrl.TrimEnd('/')}/fes/documents/{Uri.EscapeDataString(uuid)}/xml";
+
+					using var req = new HttpRequestMessage(HttpMethod.Get, url);
+					req.Headers.TryAddWithoutValidation("X-Tenant-Code", tenantCode);
+
+					using var res = _http.Send(req); // si tu _http es HttpClient y esto compila en tu versión
+					if (!res.IsSuccessStatusCode) return null;
+
+					var bytes = res.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+					if (bytes == null || bytes.Length == 0) return null;
+
+					return Convert.ToBase64String(bytes);
+				}
+			}
+			catch
+			{
+				return null;
+			}
+		}
+
+
+		private static string? GetApiIntermediaBaseUrl()
+		{
+			// 1) Prioridad: variable de entorno
+			var env = Environment.GetEnvironmentVariable("API_INTERMEDIA_BASE_URL");
+			if (!string.IsNullOrWhiteSpace(env))
+				return NormalizeApiBase(env);
+
+			env = Environment.GetEnvironmentVariable("API_INTERMEDIA_URL");
+			if (!string.IsNullOrWhiteSpace(env))
+				return NormalizeApiBase(env);
+
+			// 2) Fallback: appsettings.json del worker
+			//    (en un Worker, AppContext.BaseDirectory suele ser donde queda el exe + appsettings)
+			var environment =
+				Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+				?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+
+			var cfg = new ConfigurationBuilder()
+				.SetBasePath(AppContext.BaseDirectory)
+				.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+				.AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: false)
+				.AddEnvironmentVariables()
+				.Build();
+
+			var fromSettings = cfg["ApiIntermedia:BaseUrl"]; // <- tu "https://localhost:7226/api"
+			if (!string.IsNullOrWhiteSpace(fromSettings))
+				return NormalizeApiBase(fromSettings);
+
+			return null;
+		}
+
+		private static string NormalizeApiBase(string baseUrl)
+		{
+			baseUrl = baseUrl.Trim().TrimEnd('/');
+
+			// Queremos que la base final quede ".../api" (una sola vez)
+			if (baseUrl.EndsWith("/api", StringComparison.OrdinalIgnoreCase))
+				return baseUrl;
+
+			return baseUrl + "/api";
+		}
+
+
 	}
 }
