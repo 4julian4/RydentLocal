@@ -12,6 +12,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 	public interface IRadoQueryService
 	{
 		Task<AnamnesisIngresoRow?> ConsultarIngresoPorIdRelacion(long idRelacion, CancellationToken ct = default);
+		Task<IReadOnlyList<AbonoMotivoRow>> ConsultarMotivosPorIdRelacion(long idRelacion, CancellationToken ct = default);
 	}
 
 	public sealed class RadoQueryService : IRadoQueryService
@@ -93,6 +94,39 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 				Id_ingreso = rd["ID_INGRESO"] is DBNull ? null : Convert.ToInt64(rd["ID_INGRESO"]),
 				ingreso = rd["INGRESO"] is DBNull ? null : Convert.ToDecimal(rd["INGRESO"])
 			};
+		}
+
+		public async Task<IReadOnlyList<AbonoMotivoRow>> ConsultarMotivosPorIdRelacion(long idRelacion, CancellationToken ct = default)
+		{
+			var configuration = new ConfigurationBuilder()
+				.SetBasePath(Directory.GetCurrentDirectory())
+				.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+				.Build();
+
+			var strConn = configuration.GetValue<string>("ConnectionStrings:FirebirdConnection") ?? "";
+			await using var con = new FbConnection(strConn);
+			await con.OpenAsync(ct);
+
+			await using var cmd = new FbCommand(SqlMotivosByRelacion, con);
+			cmd.Parameters.Add(new FbParameter("idRelacion", FbDbType.BigInt) { Value = idRelacion });
+
+			var list = new List<AbonoMotivoRow>();
+			await using var rd = await cmd.ExecuteReaderAsync(ct);
+
+			while (await rd.ReadAsync(ct))
+			{
+				list.Add(new AbonoMotivoRow
+				{
+					Descripcion = rd["DESCRIPCION"]?.ToString(),
+					Codigo = rd["CODIGO"]?.ToString(),
+					Cantidad = rd["CANTIDAD"] is DBNull ? 1 : Convert.ToInt32(rd["CANTIDAD"]),
+					Valor = rd["VALOR"] is DBNull ? null : Convert.ToDecimal(rd["VALOR"]),
+					ValorIva = rd["VALORIVA"] is DBNull ? null : Convert.ToDecimal(rd["VALORIVA"]),
+					PorcentajeIva = rd["PORCENTAJEIVA"] is DBNull ? null : Convert.ToDecimal(rd["PORCENTAJEIVA"]),
+				});
+			}
+
+			return list;
 		}
 
 
@@ -185,6 +219,19 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             inner join TDATOSDOCTORES dd on dd.ID = aa.recibido_por 
             left join TCODIGOS_EPS ep on ep.CODIGO = a.CODIGO_EPS
             where aa.IDRELACION = @idRelacion
+            ";
+
+		private const string SqlMotivosByRelacion = @"
+            select
+                m.DESCRIPCION,
+                m.CODIGO,
+                m.CANTIDAD,
+                m.VALOR,
+                m.VALORIVA,
+                m.PORCENTAJEIVA
+            from T_ADICIONALES_ABONOS_MOTIVOS m
+            where m.IDRELACION = @idRelacion
+            order by m.ID
             ";
 	}
 }

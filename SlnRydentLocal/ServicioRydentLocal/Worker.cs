@@ -1,6 +1,7 @@
 ﻿
 using AutoMapper.Execution;
 using FirebirdSql.Data.FirebirdClient;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
@@ -17,6 +18,7 @@ using ServicioRydentLocal.LogicaDelNegocio.Modelos;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Dataico.Resultados;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Dataico.Solicitudes;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Rips;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos.Whatsap;
 using ServicioRydentLocal.LogicaDelNegocio.Repositorio;
 using ServicioRydentLocal.LogicaDelNegocio.Services;
 using ServicioRydentLocal.LogicaDelNegocio.Services.Dataico;
@@ -51,13 +53,41 @@ public class Worker : BackgroundService
 	// private readonly AppDbContext _dbContext;
 
 	private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1); //esto es reciente 16/08/24
+	private CancellationTokenSource? _heartbeatCts;
+	private Task? _heartbeatTask;
+
+	// ✅ Método único y seguro para asegurar conexión (anti doble start) 17-02-2026
+	private async Task EnsureConnectedAsync(CancellationToken ct = default)
+	{
+		// Si ya está conectando/reconectando/conectado, no hacemos nada
+		if (_hubConnection.State == HubConnectionState.Connected ||
+			_hubConnection.State == HubConnectionState.Connecting ||
+			_hubConnection.State == HubConnectionState.Reconnecting)
+			return;
+
+		await _connectionLock.WaitAsync(ct);
+		try
+		{
+			// Re-check por si otro hilo ya conectó mientras esperábamos el lock
+			if (_hubConnection.State == HubConnectionState.Connected ||
+				_hubConnection.State == HubConnectionState.Connecting ||
+				_hubConnection.State == HubConnectionState.Reconnecting)
+				return;
+
+			await _hubConnection.StartAsync(ct);
+			_logger.LogInformation("Worker connected to SignalR hub.");
+		}
+		finally
+		{
+			_connectionLock.Release();
+		}
+	}
 
 
 
 
-
-    // Constructor: Recibe una instancia de ILogger para realizar el registro de eventos.
-    public Worker(ILogger<Worker> logger, IServiceScopeFactory scopeFactory, IConfiguration configuration, ApiIntermediaClient api)
+	// Constructor: Recibe una instancia de ILogger para realizar el registro de eventos.
+	public Worker(ILogger<Worker> logger, IServiceScopeFactory scopeFactory, IConfiguration configuration, ApiIntermediaClient api)
     {
         _logger = logger;
         _scopeFactory = scopeFactory;
@@ -73,79 +103,363 @@ public class Worker : BackgroundService
         _hubConnection.Reconnecting += error =>
         {
             _logger.LogWarning($"Reconnecting due to: {error?.Message}");  // Log de advertencia cuando se intenta reconectar
-            return Task.CompletedTask;
+			_isDeviceRegistered = false; // ✅ al reconectar puede cambiar ConnectionId se agrego 17-02-2026
+			return Task.CompletedTask;
         };
 
-        /*_hubConnection.Reconnected += connectionId =>
-        {
-            _logger.LogInformation($"Reconnected. Connection ID: {connectionId}");  // Log de información cuando la reconexión es exitosa
-            return Task.CompletedTask;
-        };*/
+		
+		_hubConnection.Reconnected += async (connectionId) =>
+		{
+			_logger.LogInformation($"Reconnected. Connection ID: {connectionId}");
+			_isDeviceRegistered = false;
 
-        _hubConnection.Reconnected += async (connectionId) =>
-        {
-            _logger.LogInformation($"Reconnected. Connection ID: {connectionId}");
+			try
+			{
+				using var scope = _scopeFactory.CreateScope();
+				var srv = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
+				var datos = await srv.ConsultarPorId(Environment.MachineName);
 
-            try
-            {
-                using (var scope = _scopeFactory.CreateScope())
-                {
-                    var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
-                    var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(System.Environment.MachineName);
+				await RegisterDeviceAsync(retornarEntrada(datos.ENTRADA));
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError($"Error al registrar tras reconexión: {ex.Message}", ex);
+			}
+		};
 
-                    bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", retornarEntrada(datosClientes.ENTRADA));
+		
 
-                    if (isAlreadyRegistered)
-                    {
-                        _logger.LogInformation("El dispositivo ya estaba registrado tras la reconexión.");
-                    }
-                    else
-                    {
-                        _logger.LogInformation("El dispositivo no estaba registrado tras la reconexión. Registrándolo nuevamente...");
-                        await RegisterDeviceAsync(retornarEntrada(datosClientes.ENTRADA));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error al verificar o registrar el dispositivo tras la reconexión: {ex.Message}", ex);
-            }
-        };
+		//remplaza el anteriro 17-02-2026
+		_hubConnection.Closed += error =>
+		{
+			_logger.LogError($"Connection closed due to: {error?.Message}");
+
+			// ✅ Marcamos que debe revalidar registro cuando vuelva a conectar
+			_isDeviceRegistered = false;
+
+			// ✅ NO reconectamos manualmente aquí
+			// WithAutomaticReconnect + EnsureConnectedAsync (en el loop) se encargan.
+			return Task.CompletedTask;
+		};
 
 
-        _hubConnection.Closed += async error =>
-        {
-            _logger.LogError($"Connection closed due to: {error?.Message}");  // Log de error cuando la conexión se cierra
-            await Task.Delay(TimeSpan.FromSeconds(15));  // Espera 15 segundos antes de intentar reconectar
-            await StartConnectionAsync();  // Intenta reconectar
-        };
-    }
-    private string retornarEntrada(string entra)
+		if (UseWhatsAppQueue())
+		{
+			_logger.LogInformation("WhatsApp Queue ENABLED: iniciando WhatsAppPump...");
+			StartWhatsAppPump();
+		}
+		else
+		{
+			_logger.LogInformation("WhatsApp Queue DISABLED: envío directo (como siempre).");
+		}
+	}
+
+	
+
+	private void StartHeartbeatLoop(CancellationToken stoppingToken)
+	{
+		// Evita arrancar 2 veces
+		if (_heartbeatTask != null) return;
+
+		_heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+
+		_heartbeatTask = Task.Run(async () =>
+		{
+			var ct = _heartbeatCts.Token;
+
+			// Jitter inicial para que no arranquen todos al mismo segundo
+			await Task.Delay(Random.Shared.Next(1000, 5000), ct);
+
+			while (!ct.IsCancellationRequested)
+			{
+				try
+				{
+					// Asegura conexión (anti doble start, respeta reconnect)
+					await EnsureConnectedAsync(ct);
+
+					if (_hubConnection.State == HubConnectionState.Connected)
+					{
+						// 🔥 Llamada liviana al HUB
+						// Debe existir el método Heartbeat() en el hub
+						await _hubConnection.InvokeAsync("Heartbeat", cancellationToken: ct);
+					}
+
+					// ✅ Intervalo 20–30 segundos con jitter
+					var next = Random.Shared.Next(20, 31);
+					await Task.Delay(TimeSpan.FromSeconds(next), ct);
+				}
+				catch (OperationCanceledException)
+				{
+					// normal al apagar
+					break;
+				}
+				catch (Exception)
+				{
+					// ❌ Sin log spam: solo esperamos un poquito y seguimos
+					await Task.Delay(TimeSpan.FromSeconds(10), ct);
+				}
+			}
+		}, _heartbeatCts.Token);
+	}
+
+
+
+	private string retornarEntrada(string entra)
 	{
 		string? sede = _configuration.GetValue<string>("sedes:sede");
         return string.IsNullOrEmpty(sede) ? entra : entra + "::" + sede;
 
 	}
 
-    // Método para iniciar la conexión a SignalR
-    private async Task StartConnectionAsync()
-    {
-        if (_hubConnection.State == HubConnectionState.Disconnected)
-        {
-            try
-            {
-                await _hubConnection.StartAsync();
-                _logger.LogInformation("Connected to SignalR hub.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error connecting to SignalR hub: {ex.Message}");
-                await Task.Delay(TimeSpan.FromSeconds(15));
-            }
-        }
-    }
-   
-    private async Task registrarSuscripciones()
+	// Método para iniciar la conexión a SignalR
+	
+	private async Task StartConnectionAsync()
+	{
+		await EnsureConnectedAsync();
+	}
+
+
+	private bool UseWhatsAppQueue()
+	{
+		// si no existe en appsettings, queda false por defecto
+		return _configuration?.GetValue<bool>("WhatsApp:UseQueue") ?? false;
+	}
+
+	private static string ArmarMensaje(string templateNombre, List<string> parametros)
+	{
+		if (string.IsNullOrWhiteSpace(templateNombre))
+			templateNombre = "";
+
+		if (parametros == null) parametros = new List<string>();
+
+		string msg = templateNombre;
+		for (int i = 0; i < parametros.Count; i++)
+			msg = msg.Replace($"{{{i}}}", parametros[i] ?? "");
+
+		return msg.Replace("\\n", "\n");
+	}
+
+	private async Task<bool> EnviarWhatsAppSeguro(
+		WhatsAppService servicioWhatsApp,
+		string haciaNumero,
+		string templateNombre,
+		List<string> parametros,
+		string tipoJob, // "AGENDA" o "RECORDAR"
+		DateTime? fecha = null,
+		int? silla = null,
+		TimeSpan? hora = null
+	)
+	{
+		var mensajeFormateado = ArmarMensaje(templateNombre, parametros);
+
+		if (string.IsNullOrWhiteSpace(haciaNumero))
+			return false;
+
+		// ✅ Lee bandera desde appsettings
+		var useQueue = _configuration.GetValue<bool>("WhatsApp:UseQueue");
+
+		if (useQueue)
+		{
+			try
+			{
+				var job = new WaJob
+				{
+					Numero = haciaNumero,
+					Mensaje = mensajeFormateado,
+					Tipo = tipoJob,
+					Fecha = fecha,
+					Silla = silla,
+					Hora = hora
+				};
+
+				// AGENDA va a High, RECORDAR a Normal
+				if (tipoJob == "AGENDA")
+					WhatsAppQueue.High.Enqueue(job);
+				else
+					WhatsAppQueue.Normal.Enqueue(job);
+
+				return true; // programado
+			}
+			catch
+			{
+				// si falla la cola, fallback al envío directo
+			}
+		}
+
+		// ✅ fallback al comportamiento actual
+		// si quieres, aquí puedes llamar EnviarMensajePlano con mensajeFormateado
+		return await servicioWhatsApp.EnviarMensajePlano(haciaNumero, mensajeFormateado);
+	}
+
+	private void StartWhatsAppPump()
+	{
+		Task.Run(async () =>
+		{
+			_logger.LogInformation("WhatsAppPump iniciado.");
+
+			var wa = new WhatsAppService();
+			var citasSrv = new TDETALLECITASServicios();
+
+			int enviadosEnLaHora = 0;
+			var inicioHora = DateTime.UtcNow;
+
+			// 🔧 Settings desde appsettings.json
+			var maxPerHour = _configuration.GetValue<int?>("WhatsApp:MaxPerHour") ?? 10;
+			var delayAgendaMin = _configuration.GetValue<int?>("WhatsApp:DelayAgendaMinMs") ?? 2000;
+			var delayAgendaMax = _configuration.GetValue<int?>("WhatsApp:DelayAgendaMaxMs") ?? 6000;
+			var delayMassMin = _configuration.GetValue<int?>("WhatsApp:DelayMassMinMs") ?? 20000;
+			var delayMassMax = _configuration.GetValue<int?>("WhatsApp:DelayMassMaxMs") ?? 40000;
+
+			while (true)
+			{
+				try
+				{
+					// 🔁 Reset del contador cada hora
+					if (DateTime.UtcNow - inicioHora >= TimeSpan.FromHours(1))
+					{
+						inicioHora = DateTime.UtcNow;
+						enviadosEnLaHora = 0;
+						_logger.LogInformation("WhatsAppPump: contador horario reiniciado.");
+					}
+
+					// ⛔ Límite por hora
+					if (enviadosEnLaHora >= maxPerHour)
+					{
+						_logger.LogWarning($"WhatsAppPump: límite horario alcanzado ({maxPerHour}). Pausando 5 minutos...");
+						await Task.Delay(TimeSpan.FromMinutes(5));
+						continue;
+					}
+
+					// 📥 1) Prioridad ALTA (AGENDAR / REAGENDAR)
+					if (!WhatsAppQueue.High.TryDequeue(out var job))
+					{
+						// 📥 2) Prioridad NORMAL (RECORDAR)
+						WhatsAppQueue.Normal.TryDequeue(out job);
+					}
+
+					// 😴 Nada que hacer
+					if (job == null)
+					{
+						await Task.Delay(1000);
+						continue;
+					}
+
+					_logger.LogInformation($"WhatsAppPump: procesando job Tipo={job.Tipo} Numero={job.Numero}");
+
+					// 🔍 Revalidación SOLO para RECORDAR
+					if (job.Tipo == "RECORDAR" &&
+						job.Fecha.HasValue &&
+						job.Silla.HasValue &&
+						job.Hora.HasValue)
+					{
+						var cita = await citasSrv.ConsultarPorFechaSillaHora(
+							job.Fecha.Value.Date,
+							job.Silla.Value,
+							job.Hora.Value
+						);
+
+						// ❌ No existe o ya fue enviado
+						if (cita == null || !cita.Any() || cita[0].CEDULA == "SI")
+						{
+							_logger.LogWarning("WhatsAppPump: cita no válida o ya enviada. Se omite.");
+							continue;
+						}
+					}
+
+					// ⏱️ Delay humano
+					if (job.Tipo == "AGENDA")
+					{
+						var delay = Random.Shared.Next(delayAgendaMin, delayAgendaMax);
+						await Task.Delay(delay);
+					}
+					else
+					{
+						var delay = Random.Shared.Next(delayMassMin, delayMassMax);
+						await Task.Delay(delay);
+					}
+
+					// 📤 Envío real
+					var ok = await wa.EnviarMensajePlano(job.Numero, job.Mensaje);
+
+					if (ok)
+					{
+						enviadosEnLaHora++;
+
+						_logger.LogInformation(
+							$"WhatsAppPump: mensaje enviado OK a {job.Numero}. Total hora: {enviadosEnLaHora}/{maxPerHour}"
+						);
+
+						// 🟢 Marcar RECORDAR como enviado
+						if (job.Tipo == "RECORDAR" &&
+							job.Fecha.HasValue &&
+							job.Silla.HasValue &&
+							job.Hora.HasValue)
+						{
+							await citasSrv.ActualizarCampo(
+								job.Fecha.Value.Date,
+								job.Silla.Value,
+								job.Hora.Value,
+								"SI"
+							);
+						}
+					}
+					else
+					{
+						_logger.LogError($"WhatsAppPump: fallo al enviar mensaje a {job.Numero}");
+					}
+				}
+				catch (Exception ex)
+				{
+					// 🧯 Nunca se cae el worker
+					_logger.LogError(ex, "WhatsAppPump: error inesperado, se reintenta en 5s.");
+					await Task.Delay(5000);
+				}
+			}
+		});
+	}
+
+
+
+	private string TemplateAleatorioRecordar()
+	{
+		var list = new List<string>
+	{
+		"Hola {0} 👋\nTe recordamos tu cita el {1} a las {2} con {3}.",
+
+		"Buen día {0} 😊\nQueremos recordarte tu cita programada para el {1} a las {2}.",
+
+		"Hola {0}.\nRecuerda que tienes una cita el {1} a las {2} con {3}.",
+
+		"¡Hola {0}!\n⏰ Recordatorio de tu cita\n📅 {1}\n🕒 {2}\n👨‍⚕️ {3}",
+
+		"Hola {0},\nTe escribimos para recordarte tu cita el {1} a las {2}.",
+
+		"Hola {0} 😊\nTu cita está prevista para el {1} a las {2}. Te esperamos.",
+
+		"Buen día {0} 👋\nEste es un recordatorio de tu cita el {1} a las {2} con {3}.",
+
+		"Hola {0},\nNo olvides tu cita agendada para el {1} a las {2}.",
+
+		"¡Hola {0}!\nTe recordamos tu cita:\n📅 {1}\n⏰ {2}\n👨‍⚕️ {3}",
+
+		"Hola {0} 👋\nQueremos confirmarte que tienes una cita el {1} a las {2}.",
+
+		"Buen día {0}.\nTe esperamos en tu cita el {1} a las {2} con {3}.",
+
+		"Hola {0}, 😊\nEste mensaje es para recordarte tu cita el {1} a las {2}.",
+
+		"Hola {0} 👋\nTienes una cita programada para el {1} a las {2}.\n¡Te esperamos!",
+
+		"¡Hola {0}!\nRecuerda tu cita el {1} a las {2} con {3}.",
+
+		"Hola {0},\nTe enviamos un recordatorio amable de tu cita el {1} a las {2}."
+	};
+
+		return list[Random.Shared.Next(list.Count)];
+	}
+
+
+	private async Task registrarSuscripciones()
     {
         _hubConnection.On<string, string, int>("ObtenerPin", async (clientId, pin, maxIdAnamnesis) =>
         {
@@ -384,63 +698,149 @@ public class Worker : BackgroundService
         }
     }
 
-    private bool _isDeviceRegistered = false;
-    private async Task RegisterDeviceAsync(string entrada)
+
+
+	/*private bool _isDeviceRegistered = false;
+	private async Task RegisterDeviceAsync(string entrada)
+	{
+		try
+		{
+			if (_hubConnection.State != HubConnectionState.Connected)
+				return;
+
+			// 1) Preguntar si ya hay un activo para esa sede/identificadorLocal
+			var activoId = await _hubConnection.InvokeAsync<string>(
+				"GetActiveConnectionIdByIdentificadorLocal",
+				entrada
+			);
+
+			// ✅ Caso A: no hay activo -> registramos
+			if (string.IsNullOrWhiteSpace(activoId))
+			{
+				await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
+
+				_isDeviceRegistered = true;
+				_logger.LogInformation("Equipo registrado con éxito (no había activo).");
+				return;
+			}
+
+			// ✅ Caso B: el activo soy yo -> ya ok
+			if (string.Equals(activoId, _hubConnection.ConnectionId, StringComparison.Ordinal))
+			{
+				_isDeviceRegistered = true;
+				_logger.LogInformation($"La sede ya está activa y SOY YO. ConnectionId: {activoId}");
+				return;
+			}
+
+			// ✅ Caso C (IMPORTANTE): hay activo pero NO soy yo
+			// Esto pasa típico al reconectar (cambió mi ConnectionId) o si el activo quedó “pegado”.
+			_logger.LogWarning(
+				$"Activo distinto detectado. Activo={activoId} / Yo={_hubConnection.ConnectionId}. " +
+				"Re-registrando para actualizar el activo."
+			);
+
+			await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
+
+			_isDeviceRegistered = true;
+			_logger.LogInformation("Equipo re-registrado con éxito (override del activo).");
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, $"Error al registrar el equipo: {ex.Message}");
+			_isDeviceRegistered = false;
+		}
+	}*/
+
+	private bool _isDeviceRegistered = false;
+	private long _idSedeDetectada = 0;
+
+	private async Task RegisterDeviceAsync(string entrada)
+	{
+		try
+		{
+			if (_hubConnection.State != HubConnectionState.Connected)
+				return;
+
+			// 1) Preguntar si ya hay un activo para ese identificadorLocal
+			var activoId = await _hubConnection.InvokeAsync<string>(
+				"GetActiveConnectionIdByIdentificadorLocal",
+				entrada
+			);
+
+			// ✅ Helper único: V3 -> fallback V2
+			async Task RegistrarSeguroAsync()
+			{
+				_idSedeDetectada = 0;
+
+				try
+				{
+					var idSede = await _hubConnection.InvokeAsync<long>("RegistrarEquipoV3", entrada);
+					if (idSede > 0)
+					{
+						_idSedeDetectada = idSede;
+						return;
+					}
+
+					_logger.LogWarning("RegistrarEquipoV3 devolvió 0. Fallback a V2...");
+				}
+				catch (Exception ex)
+				{
+					_logger.LogWarning(ex, "RegistrarEquipoV3 falló. Fallback a V2...");
+				}
+
+				// Fallback V2
+				await _hubConnection.InvokeAsync("RegistrarEquipoV2", entrada);
+			}
+
+			// ✅ Caso A: no hay activo -> registramos
+			if (string.IsNullOrWhiteSpace(activoId))
+			{
+				await RegistrarSeguroAsync();
+				_isDeviceRegistered = true;
+				_logger.LogInformation($"Equipo registrado (no había activo). idSedeDetectada={_idSedeDetectada}");
+				return;
+			}
+
+			// ✅ Caso B: el activo soy yo -> ya ok
+			if (string.Equals(activoId, _hubConnection.ConnectionId, StringComparison.Ordinal))
+			{
+				_isDeviceRegistered = true;
+				_logger.LogInformation($"La sede ya está activa y SOY YO. ConnectionId: {activoId}");
+				return;
+			}
+
+			// ✅ Caso C: hay activo pero NO soy yo -> re-registrar
+			_logger.LogWarning(
+				$"Activo distinto detectado. Activo={activoId} / Yo={_hubConnection.ConnectionId}. Re-registrando..."
+			);
+
+			await RegistrarSeguroAsync();
+			_isDeviceRegistered = true;
+			_logger.LogInformation($"Equipo re-registrado (override). idSedeDetectada={_idSedeDetectada}");
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, $"Error al registrar el equipo: {ex.Message}");
+			_isDeviceRegistered = false;
+		}
+	}
+
+
+	//se remplaza la anteriro por esta 17-02-2026
+	private async Task AttemptReconnectAsync()
+	{
+		await EnsureConnectedAsync();
+	}
+
+
+
+	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
-        {
-            if (_hubConnection.State == HubConnectionState.Connected)
-            {
-				// Verificar si ya está registrado
-				bool isAlreadyRegistered = await _hubConnection.InvokeAsync<bool>("IsDeviceRegistered", entrada);
-                if (isAlreadyRegistered)
-                {
-                    _logger.LogWarning("El dispositivo ya está registrado. No se realizará un registro duplicado.");
-                    _isDeviceRegistered = true;
-                    return;
-                }
+		await EnsureConnectedAsync(stoppingToken); // ✅ único método
+		await registrarSuscripciones();            // ✅ solo 1 vez (bien)
+		StartHeartbeatLoop(stoppingToken);
 
-                // Registrar el dispositivo
-                await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
-                _isDeviceRegistered = true;
-                _logger.LogInformation("Equipo registrado con éxito.");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error al registrar el equipo: {ex.Message}", ex);
-        }
-    }
-
-
-
-    private async Task AttemptReconnectAsync()
-    {
-        try
-        {
-            if (_hubConnection.State != HubConnectionState.Disconnected)
-            {
-                _logger.LogInformation("La conexión ya está activa. No es necesario reconectar.");
-                return;
-            }
-
-            _logger.LogInformation("Intentando reconectar a SignalR...");
-            await _hubConnection.StartAsync();
-            _logger.LogInformation("Reconexión exitosa.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error durante la reconexión a SignalR: {ex.Message}", ex);
-        }
-    }
-
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        await StartConnectionAsync(); // Inicia la conexión al servidor
-        await registrarSuscripciones(); // Registra los eventos necesarios
-
-        while (!stoppingToken.IsCancellationRequested)
+		while (!stoppingToken.IsCancellationRequested)
         {
             _logger.LogInformation("Iniciando la consulta a la tabla...");
 
@@ -448,22 +848,25 @@ public class Worker : BackgroundService
             {
                 using (var scope = _scopeFactory.CreateScope())
                 {
-                    // Verificar estado de conexión y reconectar si es necesario
-                    if (_hubConnection.State != HubConnectionState.Connected)
-                    {
-                        _logger.LogWarning("Conexión a SignalR perdida. Intentando reconectar...");
-                        await AttemptReconnectAsync();
-                    }
+					// Verificar estado de conexión y reconectar si es necesario
+					/* if (_hubConnection.State != HubConnectionState.Connected)
+					 {
+						 _logger.LogWarning("Conexión a SignalR perdida. Intentando reconectar...");
+						 await AttemptReconnectAsync();
+					 }*/
+					// ✅ Asegura conexión sin choques (si ya está reconectando, no hace nada)
+					await EnsureConnectedAsync(stoppingToken);
 
-                    // Registrar dispositivo si no está registrado
-                    if (!_isDeviceRegistered)
-                    {
-                        var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
-                        var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(System.Environment.MachineName);
+					// Registrar dispositivo si no está registrado
+					
+					if (!_isDeviceRegistered && _hubConnection.State == HubConnectionState.Connected)
+					{
+						var _tDATOSCLIENTESServicios = scope.ServiceProvider.GetRequiredService<ITDATOSCLIENTESServicios>();
+						var datosClientes = await _tDATOSCLIENTESServicios.ConsultarPorId(Environment.MachineName);
 
-                        _logger.LogInformation($"Intentando registrar el dispositivo con entrada: {retornarEntrada(datosClientes.ENTRADA)}");
-                        await RegisterDeviceAsync(retornarEntrada(datosClientes.ENTRADA));
+						await RegisterDeviceAsync(retornarEntrada(datosClientes.ENTRADA));
 					}
+
 					//var estadoCuentaService = scope.ServiceProvider.GetRequiredService<IRadoIntegrationService>();
 					//var x = estadoCuentaService.TryEnviarIngresoPorIdRelacionAsync(29092);
 
@@ -487,21 +890,34 @@ public class Worker : BackgroundService
         }
     }
 
+	public override async Task StopAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			_heartbeatCts?.Cancel();
+			if (_heartbeatTask != null)
+				await _heartbeatTask;
+		}
+		catch { /* ignore */ }
+
+		await base.StopAsync(cancellationToken);
+	}
 
 
 
-    public async Task RecibirPinRydent(string pinacceso, string clientId, int maxIdAnamnesis)
+
+	public async Task RecibirPinRydent(string pinacceso, string clientId, int maxIdAnamnesis)
     {
         var respuestaPin = new RespuestaPinModel();
         var objPINACCESO = new TCLAVEServicios();
         var objDOCTORES = new TDATOSDOCTORESServicios();
         var objCONVENIOS = new T_CONVENIOSServicios();
         var objINFORMACIONREPORTES = new TINFORMACIONREPORTESServicios();
-        var objEPS = new TCODIGOS_EPSServicios();
-        var objPROCEDIMIENTOS = new TCODIGOS_PROCEDIMIENTOSServicios();
-        var objCONSULTAS = new TCODIGOS_CONSLUTASServicios();
-        var objDepartamentos = new TCODIGOS_DEPARTAMENTOServicios();
-        var objCiudades = new TCODIGOS_CIUDADServicios();
+        //var objEPS = new TCODIGOS_EPSServicios();
+        //var objPROCEDIMIENTOS = new TCODIGOS_PROCEDIMIENTOSServicios();
+        //var objCONSULTAS = new TCODIGOS_CONSLUTASServicios();
+        //var objDepartamentos = new TCODIGOS_DEPARTAMENTOServicios();
+        //var objCiudades = new TCODIGOS_CIUDADServicios();
         var objFrasesXEvolucion = new T_FRASE_XEVOLUCIONServicios();
         var objHorariosAgenda = new THORARIOSAGENDAServicios();
         var objHorariosAsuntos = new THORARIOSASUNTOSServicios();
@@ -518,11 +934,11 @@ public class Worker : BackgroundService
             var listConvenios = await objCONVENIOS.ConsultarTodos();
             var listInformacionReporte = await objINFORMACIONREPORTES.ConsultarTodos();
             var listDoctoresConPrestador = await objINFORMACIONREPORTES.ObtenerDoctoresConCodigoPrestadorAsync();
-            var listEps = await objEPS.ConsultarTodos();
-            var listProcedimientos = await objPROCEDIMIENTOS.ConsultarTodos();
-            var listConsultas = await objCONSULTAS.ConsultarTodos();
-            var listDepartamentos = await objDepartamentos.ConsultarTodos();
-            var listCiudades = await objCiudades.ConsultarTodos();
+            //var listEps = await objEPS.ConsultarTodos();
+            //var listProcedimientos = await objPROCEDIMIENTOS.ConsultarTodos();
+            //var listConsultas = await objCONSULTAS.ConsultarTodos();
+            //var listDepartamentos = await objDepartamentos.ConsultarTodos();
+            //var listCiudades = await objCiudades.ConsultarTodos();
             var lstFrasesXEvolucion = await objFrasesXEvolucion.ConsultarTodos();
             var listHorariosAgenda = await objHorariosAgenda.ConsultarTodos();
             var listHorariosAsuntos = await objHorariosAsuntos.ConsultarTodos();
@@ -531,11 +947,11 @@ public class Worker : BackgroundService
             var listAnamnesisParaAgendayBuscadores = await objTAnamnesisParaAgendayBuscadores.ConsultarDatosPacientesParaCargarEnAgenda(maxIdAnamnesis);
             if (listDoctores != null && listDoctores.Count() > 0)
             {
-                respuestaPin.lstEps = listEps;
-                respuestaPin.lstProcedimientos = listProcedimientos;
-                respuestaPin.lstConsultas = listConsultas;
-                respuestaPin.lstDepartamentos = listDepartamentos;
-                respuestaPin.lstCiudades = listCiudades;
+                //respuestaPin.lstEps = listEps;
+                //respuestaPin.lstProcedimientos = listProcedimientos;
+                //respuestaPin.lstConsultas = listConsultas;
+                //respuestaPin.lstDepartamentos = listDepartamentos;
+                //respuestaPin.lstCiudades = listCiudades;
                 respuestaPin.lstDoctores = listDoctores.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
                 respuestaPin.lstConvenios = listConvenios.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
 				respuestaPin.lstInformacionReporte = listInformacionReporte.ConvertAll(item => new ListadoItemModel() { id = item.ID.ToString(), nombre = (item.NOMBRE ?? "") });
@@ -2147,8 +2563,8 @@ public class Worker : BackgroundService
         }
         
     }
-    
-    public async Task GuardarDatosPersonales(string clientId, string datosPersonales)
+
+	/*public async Task GuardarDatosPersonales(string clientId, string datosPersonales)
     {
         try
         {
@@ -2191,10 +2607,99 @@ public class Worker : BackgroundService
             throw;
         }
 
-    }
+    }*/
 
-    // Método para validar Base64 antes de convertir
-    private bool EsBase64Valido(string base64String)
+	public async Task GuardarDatosPersonales(string clientId, string datosPersonales)
+	{
+		try
+		{
+			var objDatosPersonalesCompletos =
+				JsonConvert.DeserializeObject<RespuestaDatosPersonales>(datosPersonales);
+
+			var objDatosPersonales = objDatosPersonalesCompletos?.datosPersonales;
+			var objFotoPaciente = objDatosPersonalesCompletos?.strFotoFrontal;
+
+			if (objDatosPersonales == null)
+				throw new Exception("JSON inválido: datosPersonales viene null");
+
+			var objDatosPersonalesServicios = new DatosPersonalesServicios();
+			var objFotosFrontalesServicios = new TFOTOSFRONTALESServicios();
+			var objTratamientosServicios = new TTRATAMIENTOServicios();
+
+			// ✅ AQUÍ ES DONDE ESTÁ FALLANDO (y lo vamos a capturar bien)
+			var resultado = await objDatosPersonalesServicios.Agregar(objDatosPersonales);
+
+			// Foto (si llega)
+			if (!string.IsNullOrEmpty(objFotoPaciente) && EsBase64Valido(objFotoPaciente))
+			{
+				var fotoPaciente = new TFOTOSFRONTALES
+				{
+					IDANAMNESIS = resultado,
+					FOTOFRENTE = Convert.FromBase64String(objFotoPaciente)
+				};
+				await objFotosFrontalesServicios.Agregar(fotoPaciente);
+			}
+
+			// Tratamiento
+			if (resultado > 0)
+			{
+				var tratamientoPaciente = new TTRATAMIENTO
+				{
+					IDTRATAMIENTO = resultado, // OJO: revisa si IDTRATAMIENTO es identity/PK independiente
+					FECHA = objDatosPersonales.FECHA_INGRESO_DATE ?? DateTime.Now.Date,
+					NUMTRAT = 1,
+					ID_DOCTOR = objDatosPersonales.COD_DOCTOR
+				};
+
+				await objTratamientosServicios.Agregar(tratamientoPaciente);
+			}
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaGuardarDatosPersonales",
+				clientId,
+				JsonConvert.SerializeObject(new { IDANAMNESIS = resultado })
+				//resultado.ToString()
+			);
+		}
+		catch (Exception ex)
+		{
+			// ✅ Captura más “real” posible
+			string msg = ex.Message;
+
+			// EF Core: DbUpdateException trae el inner con el error real de BD
+			if (ex is DbUpdateException dbEx)
+				msg = dbEx.InnerException?.Message ?? dbEx.Message;
+
+			// Si viene envuelto (muy común)
+			if (ex.InnerException != null)
+				msg = ex.InnerException.Message;
+
+			// 🔥 CAPTURA ESPECÍFICA POR TIPO (opcional pero útil)
+			// Firebird
+			// if (ex is FbException fbEx)
+			//     msg = $"Firebird ({fbEx.ErrorCode}): {fbEx.Message}";
+
+			// SQL Server
+			// if (ex is SqlException sqlEx)
+			//     msg = $"SQL Server ({sqlEx.Number}): {sqlEx.Message}";
+
+			// ✅ Log en servidor (para que quede evidencia completa)
+			Console.Error.WriteLine("==== ERROR GuardarDatosPersonales ====");
+			Console.Error.WriteLine($"clientId: {clientId}");
+			Console.Error.WriteLine($"msg: {msg}");
+			Console.Error.WriteLine(ex.ToString()); // stacktrace completo
+			Console.Error.WriteLine("======================================");
+
+			// ✅ Mándalo al front
+			await _hubConnection.InvokeAsync("ErrorConexion", clientId, msg);
+
+			// re-lanza
+			throw;
+		}
+	}
+
+	// Método para validar Base64 antes de convertir
+	private bool EsBase64Valido(string base64String)
     {
         Span<byte> buffer = new Span<byte>(new byte[base64String.Length]);
         return Convert.TryFromBase64String(base64String, buffer, out _);
@@ -2568,10 +3073,10 @@ public class Worker : BackgroundService
                     }
                 }
             }
-            
 
 
-            else if (objDatosRealizarAccionCitaAgendada.Any(x => x.tipoAccion == "RECORDARCITA"))
+
+			/*else if (objDatosRealizarAccionCitaAgendada.Any(x => x.tipoAccion == "RECORDARCITA"))
             {
                 var enviarMensajeRecordarCita = objDatosRealizarAccionCitaAgendada.First(x => x.tipoAccion == "RECORDARCITA");
 
@@ -2669,55 +3174,176 @@ public class Worker : BackgroundService
                         respuesta = false;
                     }
                 }
-            }
+            }*/
+			else if (objDatosRealizarAccionCitaAgendada.Any(x => x.tipoAccion == "RECORDARCITA"))
+			{
+				var enviarMensajeRecordarCita = objDatosRealizarAccionCitaAgendada.First(x => x.tipoAccion == "RECORDARCITA");
 
-        }
-        var respuestaSerializada = JsonConvert.SerializeObject(respuesta);
+				if (enviarMensajeRecordarCita.aceptado)
+				{
+					var servicioWhatsApp = new WhatsAppService();
+
+					try
+					{
+						// Consultar las citas de forma asíncrona
+						var listadoCitasParaEnviarMensaje = await objDetallesCitasServicios
+							.ConsultarPorFechaySilla(enviarMensajeRecordarCita.fecha.Date, enviarMensajeRecordarCita.silla);
+
+						if (listadoCitasParaEnviarMensaje == null || !listadoCitasParaEnviarMensaje.Any())
+						{
+							Console.WriteLine("No hay citas para enviar recordatorios.");
+							respuesta = true; // no es error
+						}
+						else
+						{
+							// 🔥 IMPORTANTE:
+							// - WhatsApp:UseQueue = true  => ENCOLA (no envía aquí, no marca SI aquí)
+							// - WhatsApp:UseQueue = false => ENVÍA DIRECTO y marca SI aquí
+
+							bool useQueue = _configuration?.GetValue<bool>("WhatsApp:UseQueue") ?? false;
+							bool useRandomTemplate = _configuration?.GetValue<bool>("WhatsApp:UseRandomReminderTemplate") ?? false;
+
+							// ✅ Si NO es random, trae la frase 1 sola vez (evita consultar BD por cada cita)
+							string templateDesdeBd = "Hola {0}, te recordamos que tu cita está agendada para el día {1} a las {2} con {3}.";
+							if (!useRandomTemplate)
+							{
+								var fraseRecordatorio = await objFrasesParaAgendar.ConsultarPorTipo(5);
+								if (!string.IsNullOrWhiteSpace(fraseRecordatorio?.CONTENIDO))
+									templateDesdeBd = fraseRecordatorio.CONTENIDO;
+							}
+
+							for (int i = 0; i < listadoCitasParaEnviarMensaje.Count; i++)
+							{
+								var cita = listadoCitasParaEnviarMensaje[i];
+
+								// Si ya se envió => omitir
+								if (cita.CEDULA == "SI")
+								{
+									Console.WriteLine($"Mensaje ya enviado para la cita con ID: {cita.ID}. Se omite el envío.");
+									continue;
+								}
+
+								var haciaNumero = ValidarYAgregarPrefijo(cita.TELEFONO);
+								if (string.IsNullOrWhiteSpace(haciaNumero))
+									haciaNumero = ValidarYAgregarPrefijo(cita.CELULAR);
+
+								if (string.IsNullOrWhiteSpace(haciaNumero))
+								{
+									Console.WriteLine($"Datos incompletos para enviar mensaje a {cita.NOMBRE}.");
+									continue;
+								}
+
+								// ✅ Plantilla:
+								// - Random: cada cita elige una diferente (DEBE ir en el for)
+								// - BD: usa la misma para todas (ya cargada fuera del for)
+								string templateNombre = useRandomTemplate
+									? TemplateAleatorioRecordar()
+									: templateDesdeBd;
+
+								var parametros = new List<string>
+		                        {
+			                        cita.NOMBRE,
+			                        cita.FECHA?.ToString("dd/MM/yyyy") ?? "",
+			                        cita.HORA.HasValue
+				                        ? DateTime.Today.Add(cita.HORA.Value).ToString("hh:mm tt", System.Globalization.CultureInfo.InvariantCulture)
+				                        : "Hora no especificada",
+			                        cita.DOCTOR ?? ""
+		                        };
+
+								if (useQueue)
+								{
+									// ✅ Encolar (y NO marcar SI aquí)
+									var encolado = await EnviarWhatsAppSeguro(
+										servicioWhatsApp,
+										haciaNumero,
+										templateNombre,
+										parametros,
+										"RECORDAR",
+										fecha: cita.FECHA?.Date,
+										silla: cita.SILLA,
+										hora: cita.HORA
+									);
+
+									if (!encolado)
+										Console.WriteLine($"No se pudo encolar el recordatorio para cita ID: {cita.ID}");
+									else
+										Console.WriteLine($"Recordatorio ENCOLADO para {cita.NOMBRE} (ID: {cita.ID}).");
+								}
+								else
+								{
+									// ✅ Modo antiguo: enviar directo y marcar SI
+									var enviado = await servicioWhatsApp.EnviarMensaje(haciaNumero, templateNombre, parametros);
+
+									if (!enviado)
+									{
+										Console.WriteLine($"Error al enviar el mensaje para la cita con ID: {cita.ID}");
+									}
+									else
+									{
+										Console.WriteLine($"Mensaje enviado correctamente a {cita.NOMBRE}.");
+
+										var respuestaEdicion = await objDetallesCitasServicios.ActualizarCampo(
+											cita.FECHA!.Value.Date,
+											cita.SILLA ?? 0,
+											cita.HORA!.Value,
+											"SI"
+										);
+
+										if (!respuestaEdicion)
+											Console.WriteLine($"Error al actualizar el estado (CEDULA) de la cita con ID: {cita.ID}");
+									}
+								}
+							}
+
+							respuesta = true;
+						}
+
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"Error al procesar los mensajes: {ex.Message}");
+						respuesta = false;
+					}
+				}
+			}
+
+		}
+		var respuestaSerializada = JsonConvert.SerializeObject(respuesta);
         var respuestaSerializadaComprimida = ArchivosHelper.CompressString(respuestaSerializada);
         await _hubConnection.InvokeAsync("RespuestaRealizarAccionesEnCitaAgendada", clientId, respuestaSerializadaComprimida);
     }
 
 
 
-    public static string ValidarYAgregarPrefijo(string numero)
-    {
-        // Define la expresión regular para números celulares válidos en Colombia (10 dígitos y empiezan con 3)
-        var regex = new Regex(@"^3\d{9}$");
+	public static string ValidarYAgregarPrefijo(string numero)
+	{
+		if (string.IsNullOrWhiteSpace(numero))
+			return null;
 
-        // Remueve espacios o caracteres adicionales
-        numero = numero.Trim().Replace(" ", "").Replace("-", "");
+		var regex = new Regex(@"^3\d{9}$");
 
-        // Caso 1: Si ya tiene el prefijo +57
-        if (numero.StartsWith("+57"))
-        {
-            // Verifica que el resto del número sea válido
-            var numeroSinPrefijo = numero.Substring(3); // Remueve +57
-            return regex.IsMatch(numeroSinPrefijo) ? numero : null;
-        }
-        // Caso 2: Si empieza con 57 pero no tiene el "+"
-        else if (numero.StartsWith("57"))
-        {
-            var numeroSinPrefijo = numero.Substring(2); // Remueve 57
-            if (regex.IsMatch(numeroSinPrefijo))
-            {
-                // Agrega el prefijo "+" si es válido
-                return $"+{numero}";
-            }
-        }
-        // Caso 3: Número sin prefijo 57
-        else if (regex.IsMatch(numero))
-        {
-            // Agrega el prefijo +57 si es válido
-            return $"+57{numero}";
-        }
+		numero = numero.Trim().Replace(" ", "").Replace("-", "");
 
-        // Si no es válido, retorna null
-        return null;
-    }
+		if (numero.StartsWith("+57"))
+		{
+			var numeroSinPrefijo = numero.Substring(3);
+			return regex.IsMatch(numeroSinPrefijo) ? numero : null;
+		}
+		else if (numero.StartsWith("57"))
+		{
+			var numeroSinPrefijo = numero.Substring(2);
+			if (regex.IsMatch(numeroSinPrefijo))
+				return $"+{numero}";
+		}
+		else if (regex.IsMatch(numero))
+		{
+			return $"+57{numero}";
+		}
 
+		return null;
+	}
 
-
-    public async Task ObtenerValidacionesAgenda(string clientId, string datosAgenda)
+	public async Task ObtenerValidacionesAgenda(string clientId, string datosAgenda)
     {
         
         try
@@ -2947,9 +3573,10 @@ public class Worker : BackgroundService
 
                     if (!string.IsNullOrWhiteSpace(haciaNumero))
                     {
-                        var resultado = await servicioWhatsApp.EnviarMensajeCitaAgenda(haciaNumero, templateNombre, parametros);
+						//var resultado = await servicioWhatsApp.EnviarMensajeCitaAgenda(haciaNumero, templateNombre, parametros);
+						var resultado = await EnviarWhatsAppSeguro(servicioWhatsApp, haciaNumero, templateNombre, parametros, "AGENDA");
 
-                        if (!resultado)
+						if (!resultado)
                         {
                             Console.WriteLine($"Error al enviar el mensaje para la cita con ID: {objDetalleCitas.ID}");
                         }
@@ -3070,9 +3697,9 @@ public class Worker : BackgroundService
 
                 if (!string.IsNullOrWhiteSpace(haciaNumero))
                 {
-                    var resultado = await servicioWhatsApp.EnviarMensajeCitaAgenda(haciaNumero, templateNombre, parametros);
-
-                    if (!resultado)
+					//var resultado = await servicioWhatsApp.EnviarMensajeCitaAgenda(haciaNumero, templateNombre, parametros);
+					var resultado = await EnviarWhatsAppSeguro(servicioWhatsApp, haciaNumero, templateNombre, parametros, "AGENDA");
+					if (!resultado)
                     {
                         Console.WriteLine($"Error al enviar el mensaje para la cita con ID: {objAgenda.lstDetallaCitas[0].ID}");
                     }

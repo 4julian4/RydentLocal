@@ -144,5 +144,30 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-    }
+		public async Task<bool> EnviarMensajePlano(string haciaNumero, string mensajeFormateado)
+		{
+			try
+			{
+				var url = "http://localhost:3000/send-message";
+
+				var payload = new { phoneNumber = haciaNumero, message = mensajeFormateado };
+
+				var jsonContent = new StringContent(
+					JsonConvert.SerializeObject(payload),
+					Encoding.UTF8,
+					"application/json"
+				);
+
+				var response = await _httpClient.PostAsync(url, jsonContent);
+				return response.IsSuccessStatusCode;
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"Error al enviar el mensaje: {ex.Message}");
+				return false;
+			}
+		}
+
+
+	}
 }

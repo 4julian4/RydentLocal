@@ -1,6 +1,7 @@
 ﻿using FirebirdSql.Data.FirebirdClient;
 using Microsoft.EntityFrameworkCore;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
+using SixLabors.ImageSharp;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -415,7 +416,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 					RecibidoPorSegunUsuario = await ConsultarConfirmacionAsync(con, "RECIBIDO_POR_SEGUN_USUARIO") == 0,
 
 					ReciboManual = await ConsultarPersonalizacionAsync(con, "RECIBO_MANUAL"),
-					UsaCatalogoMotivos = await ConsultarConfirmacionAsync(con, "MOTIVO_EGRESOS_INGRESOS") == 0,
+					UsaCatalogoMotivos = await ConsultarConfirmacionAsync(con, "MOTIVO_EGRESOS_INGRESOS") == 1,
 					PermiteFirmaPagos = await ConsultarConfirmacionAsync(con, "FIRMA_PAGOS") == 0,
 					FirmaSegunUsuario = await ConsultarConfirmacionAsync(con, "FIRMA_SEGUN_USUARIO") == 0,
 
@@ -1405,15 +1406,23 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 			return list;
 		}
 
-		private async Task<(List<MotivoItemDto> Motivos, List<string> Codigos)> CargarMotivosDesdeCatalogoAsync(
+		/*private async Task<(List<MotivoItemDto> Motivos, List<string> Codigos)> CargarMotivosDesdeCatalogoAsync(
 			FbConnection con, FbTransaction? tx = null)
 		{
 			const string sql = @"
-			SELECT m.ID, m.DESCRIPCION, m.CODIGO, m.VALOR
-			FROM T_ADICIONALES_ABONOS_MOTIVOS m
-			WHERE m.DESCRIPCION IS NOT NULL
-			ORDER BY m.DESCRIPCION
-		";
+			SELECT
+				  m.ID AS id,
+				  m.NOMBRE AS nombre,
+				  m.CODIGO AS codigo,
+				  CAST(0 AS DOUBLE PRECISION) AS valor
+				FROM T_MOTIVOS m
+				WHERE m.NOMBRE IS NOT NULL
+				  AND m.TIPO = 1
+				ORDER BY m.NOMBRE
+			";
+
+			
+
 
 			using var cmd = new FbCommand(sql, con, tx);
 			using var rd = await cmd.ExecuteReaderAsync();
@@ -1463,7 +1472,71 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 			}
 
 			return (motivos, codigos.OrderBy(x => x).ToList());
+		}*/
+
+		private async Task<(List<MotivoItemDto> Motivos, List<string> Codigos)> CargarMotivosDesdeCatalogoAsync(
+			FbConnection con, FbTransaction? tx = null)
+		{
+			const string sql = @"
+        SELECT
+            m.ID     AS ID,
+            m.NOMBRE AS NOMBRE,
+            m.CODIGO AS CODIGO,
+            CAST(0 AS DOUBLE PRECISION) AS VALOR
+			FROM T_MOTIVOS m
+			WHERE m.NOMBRE IS NOT NULL
+			  AND m.TIPO = 1
+			ORDER BY m.NOMBRE
+		";
+
+			using var cmd = new FbCommand(sql, con, tx);
+			using var rd = await cmd.ExecuteReaderAsync();
+
+			var motivos = new List<MotivoItemDto>();
+			var codigos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var nombresVistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+			while (await rd.ReadAsync())
+			{
+				var nombreRaw = rd["NOMBRE"] == DBNull.Value ? null : rd["NOMBRE"]?.ToString();
+				var nombre = (nombreRaw ?? "").Trim();
+
+				if (string.IsNullOrWhiteSpace(nombre))
+					continue;
+
+				var nombreKey = NormalizarTexto(nombre);
+				if (!nombresVistos.Add(nombreKey))
+					continue;
+
+				var codigoRaw = rd["CODIGO"] == DBNull.Value ? null : rd["CODIGO"]?.ToString();
+				var codigo = string.IsNullOrWhiteSpace(codigoRaw) ? null : codigoRaw.Trim();
+
+				if (!string.IsNullOrWhiteSpace(codigo))
+					codigos.Add(codigo);
+
+				double? valor = null;
+				if (rd["VALOR"] != DBNull.Value)
+				{
+					var raw = rd["VALOR"];
+					if (raw is decimal dec) valor = (double)dec;
+					else if (raw is double dbl) valor = dbl;
+					else if (raw is float flt) valor = flt;
+					else if (double.TryParse(raw.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v))
+						valor = v;
+				}
+
+				motivos.Add(new MotivoItemDto
+				{
+					Id = rd["ID"] == DBNull.Value ? (int?)null : Convert.ToInt32(rd["ID"]),
+					Nombre = nombre,
+					Codigo = codigo,
+					Valor = valor // aquí siempre quedará 0 (por el CAST), o null si cambias el SQL
+				});
+			}
+
+			return (motivos, codigos.OrderBy(x => x).ToList());
 		}
+
 
 		private static string NormalizarTexto(string input)
 		{
