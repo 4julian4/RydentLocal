@@ -73,14 +73,104 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
+		public async Task<T_RIPS_PROCEDIMIENTOS?> ConsultarUltimoPorAnamnesis(int idAnamnesis)
+		{
+			using (var _dbcontext = new AppDbContext())
+			{
+				return await _dbcontext.T_RIPS_PROCEDIMIENTOS
+					.AsNoTracking()
+					.Where(x => x.IDANAMNESIS == idAnamnesis)
+					.OrderByDescending(x => x.FECHAPROCEDIMIENTO)
+					.ThenByDescending(x => x.ID)
+					.FirstOrDefaultAsync();
+			}
+		}
 
-    }
+		public async Task<T_RIPS_PROCEDIMIENTOS?> ConsultarUltimoPorAnamnesisYFactura(int idAnamnesis, string factura)
+		{
+			if (string.IsNullOrWhiteSpace(factura))
+				return null;
+
+			using (var _dbcontext = new AppDbContext())
+			{
+				return await _dbcontext.T_RIPS_PROCEDIMIENTOS
+					.AsNoTracking()
+					.Where(x => x.IDANAMNESIS == idAnamnesis && x.FACTURA == factura)
+					.OrderByDescending(x => x.FECHAPROCEDIMIENTO)
+					.ThenByDescending(x => x.ID)
+					.FirstOrDefaultAsync();
+			}
+		}
+			
+
+		public async Task<T_RIPS_PROCEDIMIENTOS?> ConsultarExactoAsync(int idAnamnesis, DateTime fecha, TimeSpan? hora, string? factura = null)
+		{
+			using (var _dbcontext = new AppDbContext())
+			{
+				var query = _dbcontext.T_RIPS_PROCEDIMIENTOS
+					.AsNoTracking()
+					.Where(x => x.IDANAMNESIS == idAnamnesis && x.FECHAPROCEDIMIENTO.HasValue && x.FECHAPROCEDIMIENTO.Value.Date == fecha.Date);
+
+				if (hora.HasValue)
+					query = query.Where(x => x.HORA.HasValue && x.HORA.Value == hora.Value);
+
+				if (!string.IsNullOrWhiteSpace(factura))
+					query = query.Where(x => x.FACTURA == factura);
+
+				return await query
+					.OrderByDescending(x => x.FECHAPROCEDIMIENTO)
+					.ThenByDescending(x => x.HORA)
+					.ThenByDescending(x => x.ID)
+					.FirstOrDefaultAsync();
+			}
+		}
+
+		public async Task<T_RIPS_PROCEDIMIENTOS?> ConsultarPorAnamnesisYFechaAsync(int idAnamnesis, DateTime fecha)
+		{
+			using (var _dbcontext = new AppDbContext())
+			{
+				return await _dbcontext.T_RIPS_PROCEDIMIENTOS
+					.AsNoTracking()
+					.Where(x => x.IDANAMNESIS == idAnamnesis && x.FECHAPROCEDIMIENTO.HasValue && x.FECHAPROCEDIMIENTO.Value.Date == fecha.Date)
+					.OrderByDescending(x => x.HORA)
+					.ThenByDescending(x => x.ID)
+					.FirstOrDefaultAsync();
+			}
+		}
+
+		public async Task<T_RIPS_PROCEDIMIENTOS?> ConsultarPorAnamnesisFechaYFacturaAsync(int idAnamnesis, DateTime fecha, string factura)
+		{
+			if (string.IsNullOrWhiteSpace(factura))
+				return null;
+
+			using (var _dbcontext = new AppDbContext())
+			{
+				return await _dbcontext.T_RIPS_PROCEDIMIENTOS
+					.AsNoTracking()
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FECHAPROCEDIMIENTO.HasValue &&
+						x.FECHAPROCEDIMIENTO.Value.Date == fecha.Date &&
+						x.FACTURA == factura)
+					.OrderByDescending(x => x.HORA)
+					.ThenByDescending(x => x.ID)
+					.FirstOrDefaultAsync();
+			}
+		}
+
+
+	}
 
     public interface IT_RIPS_PROCEDIMIENTOSServicios
     {
         Task<bool> Agregar(T_RIPS_PROCEDIMIENTOS t_rips_procedimientos);
         Task<bool> Editar(int ID, T_RIPS_PROCEDIMIENTOS t_rips_procedimientos);
         Task<T_RIPS_PROCEDIMIENTOS> ConsultarPorId(int ID);
-        Task Borrar(int ID);
+		Task<T_RIPS_PROCEDIMIENTOS?> ConsultarUltimoPorAnamnesis(int idAnamnesis);
+		Task<T_RIPS_PROCEDIMIENTOS?> ConsultarUltimoPorAnamnesisYFactura(int idAnamnesis, string factura);
+		Task<T_RIPS_PROCEDIMIENTOS?> ConsultarExactoAsync(int idAnamnesis, DateTime fecha, TimeSpan? hora, string? factura = null);
+		Task<T_RIPS_PROCEDIMIENTOS?> ConsultarPorAnamnesisYFechaAsync(int idAnamnesis, DateTime fecha);
+		Task<T_RIPS_PROCEDIMIENTOS?> ConsultarPorAnamnesisFechaYFacturaAsync(int idAnamnesis, DateTime fecha, string factura);
+		Task Borrar(int ID);
     }
 }

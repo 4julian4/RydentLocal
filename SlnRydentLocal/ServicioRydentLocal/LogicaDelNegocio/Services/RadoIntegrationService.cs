@@ -188,7 +188,10 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 				if (motivo != null)
 				{
 					// Tipo_Estudio es int? en tu payload y DESCRIPCION es texto -> no lo tocamos por ahora.
-					payload.Codigo_Servicio = TryInt(motivo.Codigo) ?? payload.Codigo_Servicio;
+					//payload.Codigo_Servicio = TryInt(motivo.Codigo) ?? payload.Codigo_Servicio;
+					payload.Codigo_Servicio = string.IsNullOrWhiteSpace(motivo.Codigo)
+						? payload.Codigo_Servicio
+						: motivo.Codigo.Trim();
 					payload.Cantidad = motivo.Cantidad <= 0 ? 1 : motivo.Cantidad;
 					payload.Ingreso = motivo.Valor ?? payload.Ingreso;
 				}

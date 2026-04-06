@@ -39,11 +39,13 @@ public class AppDbContext : DbContext
 	public DbSet<TCITASBORRADAS> TCITASBORRADAS { get; set; }
 	public DbSet<TDATOSDOCTORES> TDATOSDOCTORES { get; set; }
 	public DbSet<TEVOLUCION> TEVOLUCION { get; set; }
+	public DbSet<TDIAGNOSTICO> TDIAGNOSTICO { get; set; }
 	public DbSet<THORARIOSAGENDA> THORARIOSAGENDA { get; set; }
 	public DbSet<THORARIOSASUNTOS> THORARIOSASUNTOS { get; set; }
 	public DbSet<TINFORMACIONREPORTES> TINFORMACIONREPORTES { get; set; }
 	public DbSet<TTRATAMIENTO> TTRATAMIENTO { get; set; }
 	public DbSet<TPLANTRATAMIENTO> TPLANTRATAMIENTO { get; set; }
+	public DbSet<TRDA_DOCUMENTO> TRDA_DOCUMENTO { get; set; }
 	//public DbSet<HC_ARCHIVO> HC_ARCHIVO { get; set; }
 	//public DbSet<HC_ARCHIVO_SA> HC_ARCHIVO_SA { get; set; }
 	//public DbSet<HC_FOTOS_MINI> HC_FOTOS_MINI { get; set; }
@@ -70,6 +72,7 @@ public class AppDbContext : DbContext
 	public DbSet<TCODIGOS_EPS> TCODIGOS_EPS { get; set; }
 	public DbSet<TCODIGOS_PROCEDIMIENTOS> TCODIGOS_PROCEDIMIENTOS { get; set; }
 	public DbSet<TCODIGOS_CONSLUTAS> TCODIGOS_CONSLUTAS { get; set; }
+	public DbSet<TCODIGOS_CONSLUTAS_TEMP> TCODIGOS_CONSLUTAS_TEMP { get; set; }
 	public DbSet<TFESTIVOS> TFESTIVOS { get; set; }
 	public DbSet<TCODIGOS_DEPARTAMENTO> TCODIGOS_DEPARTAMENTO { get; set; }
 	public DbSet<TCODIGOS_CIUDAD> TCODIGOS_CIUDAD { get; set; }
@@ -400,6 +403,8 @@ public class AppDbContext : DbContext
 		modelBuilder.Entity<TCODIGOS_PROCEDIMIENTOS>()
 			.HasKey(c => new { c.CODIGO });
 		modelBuilder.Entity<TCODIGOS_CONSLUTAS>()
+			.HasKey(c => new { c.CODIGO });
+		modelBuilder.Entity<TCODIGOS_CONSLUTAS_TEMP>()
 			.HasKey(c => new { c.CODIGO });
 		modelBuilder.Entity<TFESTIVOS>()
 			.HasKey(c => new { c.FECHA });

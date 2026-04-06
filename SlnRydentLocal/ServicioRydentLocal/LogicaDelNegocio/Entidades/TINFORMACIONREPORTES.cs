@@ -41,5 +41,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
         public Int16? CONFACTURA { get; set; }
         public string? CODIGO_PRESTADOR_PPAL { get; set; }
         public string? PROVEEDOR_FE { get; set; }
+		public string? RDA_TENANT_ID { get; set; }
+		public string? RDA_CLIENT_ID { get; set; }
+		public string? RDA_CLIENT_SECRET { get; set; }
+		public string? RDA_SCOPE { get; set; }
+		public string? RDA_SUBSCRIPTION_KEY { get; set; }
+		public short? RDA_ENABLED { get; set; }
 	}
 }

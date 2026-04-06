@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using ServicioRydentLocal.LogicaDelNegocio.Repositorio;      // si inyectas repos de aquí
 using ServicioRydentLocal.LogicaDelNegocio.Services;
+using ServicioRydentLocal.LogicaDelNegocio.Services.Dataico; // ApiIntermediaClient, FacturacionSaludRepository
 using ServicioRydentLocal.LogicaDelNegocio.Services.Rips;
 using ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis;
-using ServicioRydentLocal.LogicaDelNegocio.Services.Dataico; // ApiIntermediaClient, FacturacionSaludRepository
-using ServicioRydentLocal.LogicaDelNegocio.Repositorio;      // si inyectas repos de aquí
 
 public class Program
 {
@@ -17,6 +17,8 @@ public class Program
 			.ConfigureServices((hostContext, services) =>
 			{
 				var cfg = hostContext.Configuration;
+
+				
 
 				// 1) DbContext Firebird (Scoped)
 				services.AddDbContext<AppDbContext>(options =>
@@ -53,6 +55,8 @@ public class Program
 				services.AddScoped<DatosPersonalesServicios>();
 				services.AddScoped<AntecedentesServicios>();
 				services.AddScoped<TEVOLUCIONServicios>();
+				services.AddScoped<TDIAGNOSTICOServicios>();
+				services.AddScoped<TRDADOCUMENTOServicios>();
 				services.AddScoped<TFIRMAServicios>();
 				services.AddScoped<TTRATAMIENTOServicios>();
 				services.AddScoped<T_FRASE_XEVOLUCIONServicios>();

@@ -42,12 +42,14 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 				Personal = Clean(row.Personal, 100),
 				Especialidad = Clean(row.ESPECIALIDAD, 100),
 
-				Entidad = ToIntOrNull(row.Entidad),
+				//Entidad = ToIntOrNull(row.Entidad),
+				Entidad = Clean(row.Entidad, 30),
 				Regimen = ToIntOrNull(row.Regimen),
 
 				Centro_Atencion = ToIntOrNull(row.CentroAtencion),
 				Tipo_Estudio = ToIntOrNull(row.Tipo_Estudio),
-				Codigo_Servicio = ToIntOrNull(row.Codigo_Servicio),
+				//Codigo_Servicio = ToIntOrNull(row.Codigo_Servicio),
+				Codigo_Servicio = Clean(row.Codigo_Servicio, 20),
 
 				Servicio_Ips = Clean(row.Servicio_Ips, 100),
 

@@ -61,7 +61,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos.Rado
 		public string? Especialidad { get; set; }
 
 		[JsonPropertyName("Entidad")]
-		public int? Entidad { get; set; }
+		public string? Entidad { get; set; }
 
 		[JsonPropertyName("Regimen")]
 		public int? Regimen { get; set; }
@@ -73,7 +73,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos.Rado
 		public int? Tipo_Estudio { get; set; }
 
 		[JsonPropertyName("Codigo_Servicio")]
-		public int? Codigo_Servicio { get; set; }
+		//public int? Codigo_Servicio { get; set; }
+		public string? Codigo_Servicio { get; set; }
 
 		[JsonPropertyName("Servicio_Ips")]
 		public string? Servicio_Ips { get; set; }
