@@ -17,11 +17,13 @@ using ServicioRydentLocal.LogicaDelNegocio.Helpers;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Dataico.Resultados;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Dataico.Solicitudes;
+using ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Rips;
 using ServicioRydentLocal.LogicaDelNegocio.Modelos.Whatsap;
 using ServicioRydentLocal.LogicaDelNegocio.Repositorio;
 using ServicioRydentLocal.LogicaDelNegocio.Services;
 using ServicioRydentLocal.LogicaDelNegocio.Services.Dataico;
+using ServicioRydentLocal.LogicaDelNegocio.Services.Interoperabilidad;
 using ServicioRydentLocal.LogicaDelNegocio.Services.Rips;
 using ServicioRydentLocal.LogicaDelNegocio.Services.TAnamnesis;
 using SixLabors.ImageSharp;
@@ -530,7 +532,22 @@ public class Worker : BackgroundService
             await GuardarDatosRips(clientId, datosRips);
         });
 
-        _hubConnection.On<string, string>("ObtenerFacturasPorIdEntreFechas", async (clientId, modeloDatosParaConsultarFacturasEntreFechas) =>
+		_hubConnection.On<string, string>("ConsultarRipsExistentes", async (clientId, payloadJson) =>
+		{
+			await ConsultarRipsExistentes(clientId, payloadJson);
+		});
+
+		_hubConnection.On<string, string>("EliminarRipsPorLlave", async (clientId, payloadJson) =>
+		{
+			await EliminarRipsPorLlave(clientId, payloadJson);
+		});
+
+		_hubConnection.On<string, string>("ConsultarRipsDetallePorLlave", async (clientId, payloadJson) =>
+		{
+			await ConsultarRipsDetallePorLlave(clientId, payloadJson);
+		});
+
+		_hubConnection.On<string, string>("ObtenerFacturasPorIdEntreFechas", async (clientId, modeloDatosParaConsultarFacturasEntreFechas) =>
         {
             await ObtenerFacturasPorIdEntreFechas(clientId, modeloDatosParaConsultarFacturasEntreFechas);
         });
@@ -545,7 +562,42 @@ public class Worker : BackgroundService
             await PresentarRips(clientId, identificador, objPresentarRips);
         });
 
-        _hubConnection.On<string>("ObtenerFacturasPendientes", async (clientId) =>
+		_hubConnection.On<string, string>("ConsultarRdaControl", async (clientId, filtroJson) =>
+		{
+			await ConsultarRdaControl(clientId, filtroJson);
+		});
+
+		_hubConnection.On<string, int>("ReenviarRda", async (clientId, idRda) =>
+		{
+			await ReenviarRda(clientId, idRda);
+		});
+
+		_hubConnection.On<string, int>("RegenerarRda", async (clientId, idRda) =>
+		{
+			await RegenerarRda(clientId, idRda);
+		});
+
+		_hubConnection.On<string, int>("ConsultarDetalleRda", async (clientId, idRda) =>
+		{
+			await ConsultarDetalleRda(clientId, idRda);
+		});
+
+		_hubConnection.On<string, int>("ConsultarHistorialRda", async (clientId, idRda) =>
+		{
+			await ConsultarHistorialRda(clientId, idRda);
+		});
+
+		_hubConnection.On<string, string>("ReenviarRdaLote", async (clientId, idsJson) =>
+		{
+			await ReenviarRdaLote(clientId, idsJson);
+		});
+
+		_hubConnection.On<string, string>("RegenerarRdaLote", async (clientId, idsJson) =>
+		{
+			await RegenerarRdaLote(clientId, idsJson);
+		});
+
+		_hubConnection.On<string>("ObtenerFacturasPendientes", async (clientId) =>
         {
             await ObtenerFacturasPendientes(clientId);
         });
@@ -1671,97 +1723,1448 @@ public class Worker : BackgroundService
         }
         
     }
-    public async Task GuardarDatosRips(string clientId, string datosRips)
-    {
-        var objRips = JsonConvert.DeserializeObject<DatosGuardarRips>(datosRips);
-        var objRipsDxServicios = new T_RIPS_DXServicios();
-        var objRipsProcedimientosServicios = new T_RIPS_PROCEDIMIENTOSServicios();
-        var datosGuardarRipsDx = new T_RIPS_DX();
-        var objTAnamnesisServicios = new TANAMNESISServicios();
-        var objTAnamnesis = new TANAMNESIS();
-        objTAnamnesis = await objTAnamnesisServicios.ConsultarPorId(objRips.IDANAMNESIS ?? 0);
-        
-        var codigoEntidad = objRips.CODIGOENTIDAD;
-        if (objRips.CODIGOENTIDAD == "")
-        {
-            codigoEntidad = "000000";
-        }
-        datosGuardarRipsDx.CODIGOENTIDAD = codigoEntidad;
-        datosGuardarRipsDx.IDANAMNESIS = objRips.IDANAMNESIS;
-        //ojo falta validar lo de la factura
-        if (objRips.FACTURA == "AUTO")
-        {
-            using (var _dbcontext = new AppDbContext())
-            {
-                objRips.FACTURA = await _dbcontext.GEN_CONSECUTIVO_RIPS();
-            }
-        }
-        
-        datosGuardarRipsDx.FACTURA = string.IsNullOrEmpty(objRips.FACTURA) ? "PENDIENTE": objRips.FACTURA;
-        datosGuardarRipsDx.IDDOCTOR = objRips.IDDOCTOR;
 
-        var objTINFORMACIONREPORTESServicios = new TINFORMACIONREPORTESServicios();
-        var codigoPrestador = await objTINFORMACIONREPORTESServicios.ConsultarCodigoPrestador(objRips.IDDOCTOR ?? 0);
-        datosGuardarRipsDx.CODIGOPRESTADOR = string.IsNullOrEmpty(codigoPrestador) ? "000000" : codigoPrestador;
-        
-        
-        datosGuardarRipsDx.TIPOIDENTIFICACION = objTAnamnesis.DOCUMENTO_IDENTIDAD;
-        datosGuardarRipsDx.IDENTIFICACION = objTAnamnesis.CEDULA_NUMERO;
-        datosGuardarRipsDx.FECHACONSULTA = objRips.FECHACONSULTA;
-        datosGuardarRipsDx.NUMEROAUTORIZACION = objRips.NUMEROAUTORIZACION;
-        datosGuardarRipsDx.CODIGOCONSULTA = objRips.CODIGOCONSULTA;
-        datosGuardarRipsDx.FINALIDADCONSULTA = objRips.FINALIDADCONSULTA;
-        datosGuardarRipsDx.CAUSAEXTERNA = objRips.CAUSAEXTERNA;
-        datosGuardarRipsDx.DX1 = objRips.CODIGODIAGNOSTICOPRINCIPAL;
-        datosGuardarRipsDx.TIPODIAGNOSTICO = objRips.TIPODIAGNOSTICO;
-        datosGuardarRipsDx.VALORCONSULTA = objRips.VALORCONSULTA;
-        datosGuardarRipsDx.VALORCUOTAMODERADORA = objRips.VALORCUOTAMODERADORA;
-        datosGuardarRipsDx.VALORNETO = objRips.VALORNETO;
 
-        var resultadoDx = await objRipsDxServicios.Agregar(datosGuardarRipsDx);
-        var resultado = resultadoDx;
-        if (resultadoDx)
-        {
-            var objHistorialServicios = new THISTORIALServicios();
-            var mensaje = "Se agrega dx RIPS CORTO al paciente " + objTAnamnesis.IDANAMNESIS_TEXTO + " - " + objTAnamnesis.NOMBRE_PACIENTE;
-            await objHistorialServicios.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = "",DESCRIPCION = mensaje });
-        }
-        if (objRips.CODIGOPROCEDIMIENTO != null)
-        {
-            var datosGuardarRipsProcedimientos = new T_RIPS_PROCEDIMIENTOS();
-            datosGuardarRipsProcedimientos.IDANAMNESIS = objRips.IDANAMNESIS;
-            datosGuardarRipsProcedimientos.FACTURA = objRips.FACTURA;
-            datosGuardarRipsProcedimientos.CODIGOENTIDAD = codigoEntidad;
-            datosGuardarRipsProcedimientos.IDDOCTOR = objRips.IDDOCTOR;
-            datosGuardarRipsProcedimientos.CODIGOPRESTADOR = codigoPrestador;
-            datosGuardarRipsProcedimientos.TIPOIDENTIFICACION = objTAnamnesis.DOCUMENTO_IDENTIDAD;
-            datosGuardarRipsProcedimientos.IDENTIFICACION = objTAnamnesis.CEDULA_NUMERO;
-            datosGuardarRipsProcedimientos.FECHAPROCEDIMIENTO = objRips.FECHACONSULTA;
-            datosGuardarRipsProcedimientos.NUMEROAUTORIZACION = objRips.NUMEROAUTORIZACION;
-            datosGuardarRipsProcedimientos.CODIGOPROCEDIMIENTO = objRips.CODIGOPROCEDIMIENTO;
-            datosGuardarRipsProcedimientos.FINALIDADPROCEDIMIENTI = objRips.FINALIDADPROCEDIMIENTI;
-            datosGuardarRipsProcedimientos.AMBITOREALIZACION = objRips.AMBITOREALIZACION;
-            datosGuardarRipsProcedimientos.PERSONALQUEATIENDE = objRips.PERSONALQUEATIENDE;
-            datosGuardarRipsProcedimientos.DXPRINCIPAL = objRips.DXPRINCIPAL;
-            datosGuardarRipsProcedimientos.DXRELACIONADO = objRips.DXRELACIONADO;
-            datosGuardarRipsProcedimientos.COMPLICACION = objRips.COMPLICACION;
-            datosGuardarRipsProcedimientos.FORMAREALIZACIONACTOQUIR = objRips.FORMAREALIZACIONACTOQUIR;
-            datosGuardarRipsProcedimientos.VALORPROCEDIMIENTO = objRips.VALORPROCEDIMIENTO;
-            datosGuardarRipsProcedimientos.EXTRANJERO = objRips.EXTRANJERO;
-            datosGuardarRipsProcedimientos.PAIS = objRips.PAIS;
-            var resultadoProcedimientos = await objRipsProcedimientosServicios.Agregar(datosGuardarRipsProcedimientos);
-            if (resultadoProcedimientos)
-            {
-                var objHistorialServicios = new THISTORIALServicios();
-                var mensaje = "Se agrega Procedimiento RIPS CORTO al paciente  " + objTAnamnesis.IDANAMNESIS_TEXTO + " - " + objTAnamnesis.NOMBRE_PACIENTE;
-                await objHistorialServicios.Agregar(new THISTORIAL() { FECHA = DateTime.Now.Date, HORA = DateTime.Now.TimeOfDay, USUARIO = "", DESCRIPCION = mensaje });
-            }
-            resultado = resultadoProcedimientos;
-        }
-        await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, resultado);
-    }
+	/*public async Task GuardarDatosRips(string clientId, string datosRips)
+	{
+		bool resultadoGlobal = false;
 
-    public async Task ObtenerFacturasPorIdEntreFechas(string clientId, string modeloDatosParaConsultarFacturasEntreFechas)
+		try
+		{
+			if (string.IsNullOrWhiteSpace(datosRips))
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false);
+				return;
+			}
+
+			var objRips = JsonConvert.DeserializeObject<DatosGuardarRips>(datosRips);
+
+			if (objRips == null)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false);
+				return;
+			}
+
+			if ((objRips.IDANAMNESIS ?? 0) <= 0)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false);
+				return;
+			}
+
+			var objRipsDxServicios = new T_RIPS_DXServicios();
+			var objRipsProcedimientosServicios = new T_RIPS_PROCEDIMIENTOSServicios();
+			var objTAnamnesisServicios = new TANAMNESISServicios();
+			var objHistorialServicios = new THISTORIALServicios();
+			var objTINFORMACIONREPORTESServicios = new TINFORMACIONREPORTESServicios();
+
+			var objTAnamnesis = await objTAnamnesisServicios.ConsultarPorId(objRips.IDANAMNESIS ?? 0);
+			if (objTAnamnesis == null)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false);
+				return;
+			}
+
+			// ==========================
+			// Normalizaciones base
+			// ==========================
+			var codigoEntidad = string.IsNullOrWhiteSpace(objRips.CODIGOENTIDAD)
+				? "000000"
+				: objRips.CODIGOENTIDAD!.Trim();
+
+			var extranjero = string.IsNullOrWhiteSpace(objRips.EXTRANJERO)
+				? "NO"
+				: objRips.EXTRANJERO!.Trim().ToUpper();
+
+			var pais = string.IsNullOrWhiteSpace(objRips.PAIS)
+				? string.Empty
+				: objRips.PAIS!.Trim().ToUpper();
+
+			var fechaConsulta = objRips.FECHACONSULTA ?? DateTime.Now.Date;
+
+			// ==========================
+			// FACTURA única para DX + todos los procedimientos
+			// ==========================
+			if (string.Equals(objRips.FACTURA, "AUTO", StringComparison.OrdinalIgnoreCase))
+			{
+				using (var db = new AppDbContext())
+				{
+					objRips.FACTURA = await db.GEN_CONSECUTIVO_RIPS();
+				}
+			}
+
+			var facturaFinal = string.IsNullOrWhiteSpace(objRips.FACTURA)
+				? "PENDIENTE"
+				: objRips.FACTURA!.Trim();
+
+			objRips.FACTURA = facturaFinal;
+
+			// ==========================
+			// Código prestador
+			// ==========================
+			var codigoPrestador = await objTINFORMACIONREPORTESServicios
+				.ConsultarCodigoPrestador(objRips.IDDOCTOR ?? 0);
+
+			codigoPrestador = string.IsNullOrWhiteSpace(codigoPrestador)
+				? "000000"
+				: codigoPrestador.Trim();
+
+			// ==========================
+			// Guardar DX / Consulta
+			// Nota:
+			// lo dejo guardando SIEMPRE como lo hacías antes,
+			// para no cambiarte comportamiento funcional.
+			// ==========================
+			var datosGuardarRipsDx = new T_RIPS_DX
+			{
+				IDANAMNESIS = objRips.IDANAMNESIS,
+				IDDOCTOR = objRips.IDDOCTOR,
+				FACTURA = facturaFinal,
+				CODIGOPRESTADOR = codigoPrestador,
+				TIPOIDENTIFICACION = objTAnamnesis.DOCUMENTO_IDENTIDAD,
+				IDENTIFICACION = objTAnamnesis.CEDULA_NUMERO,
+				FECHACONSULTA = fechaConsulta,
+				NUMEROAUTORIZACION = objRips.NUMEROAUTORIZACION,
+				CODIGOCONSULTA = objRips.CODIGOCONSULTA,
+				FINALIDADCONSULTA = objRips.FINALIDADCONSULTA,
+				CAUSAEXTERNA = objRips.CAUSAEXTERNA,
+
+				DX1 = objRips.CODIGODIAGNOSTICOPRINCIPAL,
+				DX2 = objRips.CODIGODIAGNOSTICO2,
+				DX3 = objRips.CODIGODIAGNOSTICO3,
+				DX4 = objRips.CODIGODIAGNOSTICO4,
+
+				TIPODIAGNOSTICO = objRips.TIPODIAGNOSTICO,
+				VALORCONSULTA = objRips.VALORCONSULTA,
+				VALORCUOTAMODERADORA = objRips.VALORCUOTAMODERADORA,
+				VALORNETO = objRips.VALORNETO,
+				CODIGOENTIDAD = codigoEntidad,
+				EXTRANJERO = extranjero,
+				PAIS = pais
+			};
+
+			var resultadoDx = await objRipsDxServicios.Agregar(datosGuardarRipsDx);
+			if (!resultadoDx)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false);
+				return;
+			}
+
+			await objHistorialServicios.Agregar(new THISTORIAL()
+			{
+				FECHA = DateTime.Now.Date,
+				HORA = DateTime.Now.TimeOfDay,
+				USUARIO = "",
+				DESCRIPCION = "Se agrega DX RIPS al paciente " +
+							  objTAnamnesis.IDANAMNESIS_TEXTO + " - " +
+							  objTAnamnesis.NOMBRE_PACIENTE
+			});
+
+			// ==========================
+			// Procedimientos múltiples
+			// ==========================
+			var procedimientos = NormalizarProcedimientos(objRips);
+
+			foreach (var proc in procedimientos)
+			{
+				var entidadProcedimiento = new T_RIPS_PROCEDIMIENTOS
+				{
+					IDANAMNESIS = objRips.IDANAMNESIS,
+					IDDOCTOR = objRips.IDDOCTOR,
+					FACTURA = facturaFinal,
+					CODIGOPRESTADOR = codigoPrestador,
+					TIPOIDENTIFICACION = objTAnamnesis.DOCUMENTO_IDENTIDAD,
+					IDENTIFICACION = objTAnamnesis.CEDULA_NUMERO,
+					FECHAPROCEDIMIENTO = fechaConsulta,
+					NUMEROAUTORIZACION = objRips.NUMEROAUTORIZACION,
+					CODIGOPROCEDIMIENTO = proc.CODIGOPROCEDIMIENTO,
+					AMBITOREALIZACION = proc.AMBITOREALIZACION,
+					FINALIDADPROCEDIMIENTI = proc.FINALIDADPROCEDIMIENTI,
+					PERSONALQUEATIENDE = proc.PERSONALQUEATIENDE,
+					DXPRINCIPAL = string.IsNullOrWhiteSpace(proc.DXPRINCIPAL)
+						? objRips.CODIGODIAGNOSTICOPRINCIPAL
+						: proc.DXPRINCIPAL,
+					DXRELACIONADO = proc.DXRELACIONADO,
+					COMPLICACION = proc.COMPLICACION,
+					FORMAREALIZACIONACTOQUIR = proc.FORMAREALIZACIONACTOQUIR,
+					VALORPROCEDIMIENTO = proc.VALORPROCEDIMIENTO,
+					CODIGOENTIDAD = codigoEntidad,
+					EXTRANJERO = extranjero,
+					PAIS = pais
+				};
+
+				var resultadoProcedimiento = await objRipsProcedimientosServicios
+					.Agregar(entidadProcedimiento);
+
+				if (!resultadoProcedimiento)
+				{
+					await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false);
+					return;
+				}
+
+				await objHistorialServicios.Agregar(new THISTORIAL()
+				{
+					FECHA = DateTime.Now.Date,
+					HORA = DateTime.Now.TimeOfDay,
+					USUARIO = "",
+					DESCRIPCION = "Se agrega Procedimiento RIPS al paciente " +
+								  objTAnamnesis.IDANAMNESIS_TEXTO + " - " +
+								  objTAnamnesis.NOMBRE_PACIENTE
+				});
+			}
+
+			resultadoGlobal = true;
+			await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, resultadoGlobal);
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine($"[Worker] Error GuardarDatosRips: {ex}");
+			await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false);
+		}
+	}*/
+
+	public async Task GuardarDatosRips(string clientId, string datosRips)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(datosRips))
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false, "Payload vacío.");
+				return;
+			}
+
+			var objRips = JsonConvert.DeserializeObject<DatosGuardarRips>(datosRips);
+
+			if (objRips == null)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false, "No fue posible deserializar el payload.");
+				return;
+			}
+
+			if ((objRips.IDANAMNESIS ?? 0) <= 0)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false, "IDANAMNESIS inválido.");
+				return;
+			}
+
+			using var db = new AppDbContext();
+			using var trx = await db.Database.BeginTransactionAsync();
+
+			var objTAnamnesis = await db.TANAMNESIS
+				.FirstOrDefaultAsync(x => x.IDANAMNESIS == objRips.IDANAMNESIS);
+
+			if (objTAnamnesis == null)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false, "No existe la anamnesis.");
+				await trx.RollbackAsync();
+				return;
+			}
+
+			var modo = NormalizarModo(objRips.MODO);
+			var fechaAtencion = objRips.FECHACONSULTA?.Date ?? DateTime.Now.Date;
+
+			var codigoEntidad = LimpiarTexto(objRips.CODIGOENTIDAD, "000000");
+			var extranjero = LimpiarTexto(objRips.EXTRANJERO, "NO").ToUpperInvariant();
+			var pais = LimpiarTexto(objRips.PAIS, string.Empty).ToUpperInvariant();
+			var numeroAutorizacion = LimpiarTexto(objRips.NUMEROAUTORIZACION, string.Empty);
+
+			var tieneConsulta = TieneConsultaReal(objRips);
+			var procedimientos = NormalizarProcedimientos(objRips);
+			var tieneProcedimientos = procedimientos.Any();
+
+			if (!tieneConsulta && !tieneProcedimientos)
+			{
+				await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false, "Debe enviar una consulta o al menos un procedimiento.");
+				return;
+			}
+
+			string facturaTrabajo;
+			TimeSpan horaLote;
+
+			string facturaOriginal = LimpiarTexto(objRips.FACTURAORIGINAL, string.Empty);
+
+			if (modo == "EDITAR")
+			{
+				facturaTrabajo = LimpiarTexto(objRips.FACTURA, string.Empty);
+
+				if (string.Equals(facturaTrabajo, "AUTO", StringComparison.OrdinalIgnoreCase))
+				{
+					facturaTrabajo = await db.GEN_CONSECUTIVO_RIPS();
+				}
+				else if (string.IsNullOrWhiteSpace(facturaTrabajo))
+				{
+					facturaTrabajo = facturaOriginal;
+				}
+
+				if (string.IsNullOrWhiteSpace(facturaTrabajo))
+				{
+					await _hubConnection.InvokeAsync(
+						"RespuestaGuardarDatosRips",
+						clientId,
+						false,
+						"Para editar debe enviar FACTURA, FACTURAORIGINAL o AUTO."
+					);
+					return;
+				}
+
+				// En edición conservamos la hora vieja si vino.
+				var horaOriginalNormalizada = HoraVacia(objRips.HORAORIGINAL)
+					? (TimeSpan?)null
+					: NormalizarHora(objRips.HORAORIGINAL);
+
+				horaLote = horaOriginalNormalizada ?? ObtenerHoraLoteNormalizada();
+			}
+			else
+			{
+				if (string.Equals(objRips.FACTURA, "AUTO", StringComparison.OrdinalIgnoreCase))
+				{
+					objRips.FACTURA = await db.GEN_CONSECUTIVO_RIPS();
+				}
+
+				facturaTrabajo = string.IsNullOrWhiteSpace(objRips.FACTURA)
+					? "PENDIENTE"
+					: objRips.FACTURA.Trim();
+
+				horaLote = ObtenerHoraLoteNormalizada();
+			}
+
+			objRips.FACTURA = facturaTrabajo;
+			objRips.HORALOTE = horaLote;
+
+			var codigoPrestador = await ObtenerCodigoPrestadorAsync(db, objRips.IDDOCTOR ?? 0);
+			codigoPrestador = LimpiarTexto(codigoPrestador, "000000");
+
+			if (modo == "EDITAR" || (objRips.REEMPLAZAR_EXISTENTE ?? false))
+			{
+				var horaOriginalParaEliminar = HoraVacia(objRips.HORAORIGINAL)
+					? (TimeSpan?)null
+					: NormalizarHora(objRips.HORAORIGINAL);
+
+				var fechaOriginalParaEliminar = objRips.FECHAORIGINAL?.Date ?? fechaAtencion;
+
+				var rdaConsultaEnviado = await EstaRdaConsultaEnviadoAsync(
+					db,
+					objRips.IDANAMNESIS ?? 0,
+					fechaOriginalParaEliminar,
+					horaOriginalParaEliminar
+				);
+
+				if (rdaConsultaEnviado)
+				{
+					await _hubConnection.InvokeAsync(
+						"RespuestaGuardarDatosRips",
+						clientId,
+						false,
+						"No se puede editar este RIPS porque su RDA de consulta ya fue enviado."
+					);
+					return;
+				}
+
+				await EliminarRipsExistenteAsync(
+					db,
+					objRips.IDANAMNESIS ?? 0,
+					string.IsNullOrWhiteSpace(facturaOriginal) ? facturaTrabajo : facturaOriginal,
+					fechaOriginalParaEliminar,
+					horaOriginalParaEliminar
+				);
+
+				await EliminarRdaConsultaExistenteAsync(
+					db,
+					objRips.IDANAMNESIS ?? 0,
+					fechaOriginalParaEliminar,
+					horaOriginalParaEliminar
+				);
+			}
+			else
+			{
+				var yaExiste = await ExisteRipsAsync(
+					db,
+					objRips.IDANAMNESIS ?? 0,
+					facturaTrabajo,
+					fechaAtencion,
+					horaLote
+				);
+
+				if (yaExiste)
+				{
+					await _hubConnection.InvokeAsync(
+						"RespuestaGuardarDatosRips",
+						clientId,
+						false,
+						$"Ya existe un RIPS igual para la anamnesis {objRips.IDANAMNESIS}, factura {facturaTrabajo}, fecha {fechaAtencion:yyyy-MM-dd} y hora {horaLote}."
+					);
+					return;
+				}
+			}
+
+			if (tieneConsulta)
+			{
+				var dx = new T_RIPS_DX
+				{
+					IDANAMNESIS = objRips.IDANAMNESIS,
+					IDDOCTOR = objRips.IDDOCTOR,
+					FACTURA = facturaTrabajo,
+					CODIGOPRESTADOR = codigoPrestador,
+					TIPOIDENTIFICACION = LimpiarTexto(objTAnamnesis.DOCUMENTO_IDENTIDAD, string.Empty),
+					IDENTIFICACION = LimpiarTexto(objTAnamnesis.CEDULA_NUMERO, string.Empty),
+					FECHACONSULTA = fechaAtencion,
+					NUMEROAUTORIZACION = numeroAutorizacion,
+					CODIGOCONSULTA = LimpiarTexto(objRips.CODIGOCONSULTA, string.Empty),
+					FINALIDADCONSULTA = LimpiarTexto(objRips.FINALIDADCONSULTA, string.Empty),
+					CAUSAEXTERNA = LimpiarTexto(objRips.CAUSAEXTERNA, string.Empty),
+					DX1 = LimpiarTexto(objRips.CODIGODIAGNOSTICOPRINCIPAL, string.Empty),
+					DX2 = LimpiarTexto(objRips.CODIGODIAGNOSTICO2, string.Empty),
+					DX3 = LimpiarTexto(objRips.CODIGODIAGNOSTICO3, string.Empty),
+					DX4 = LimpiarTexto(objRips.CODIGODIAGNOSTICO4, string.Empty),
+					TIPODIAGNOSTICO = LimpiarTexto(objRips.TIPODIAGNOSTICO, string.Empty),
+					VALORCONSULTA = NormalizarNumero(objRips.VALORCONSULTA),
+					VALORCUOTAMODERADORA = NormalizarNumero(objRips.VALORCUOTAMODERADORA),
+					VALORNETO = NormalizarNumero(objRips.VALORNETO),
+					CODIGOENTIDAD = codigoEntidad,
+					EXTRANJERO = extranjero,
+					PAIS = pais,
+					HORA = horaLote
+				};
+
+				db.T_RIPS_DX.Add(dx);
+			}
+
+			if (tieneProcedimientos)
+			{
+				foreach (var proc in procedimientos)
+				{
+					var entidadProc = new T_RIPS_PROCEDIMIENTOS
+					{
+						IDANAMNESIS = objRips.IDANAMNESIS,
+						IDDOCTOR = objRips.IDDOCTOR,
+						FACTURA = facturaTrabajo,
+						CODIGOPRESTADOR = codigoPrestador,
+						TIPOIDENTIFICACION = LimpiarTexto(objTAnamnesis.DOCUMENTO_IDENTIDAD, string.Empty),
+						IDENTIFICACION = LimpiarTexto(objTAnamnesis.CEDULA_NUMERO, string.Empty),
+						FECHAPROCEDIMIENTO = fechaAtencion,
+						NUMEROAUTORIZACION = numeroAutorizacion,
+						CODIGOPROCEDIMIENTO = LimpiarTexto(proc.CODIGOPROCEDIMIENTO, string.Empty),
+						AMBITOREALIZACION = LimpiarTexto(proc.AMBITOREALIZACION, string.Empty),
+						FINALIDADPROCEDIMIENTI = LimpiarTexto(proc.FINALIDADPROCEDIMIENTI, string.Empty),
+						PERSONALQUEATIENDE = LimpiarTexto(proc.PERSONALQUEATIENDE, string.Empty),
+						DXPRINCIPAL = LimpiarTexto(
+							string.IsNullOrWhiteSpace(proc.DXPRINCIPAL)
+								? objRips.CODIGODIAGNOSTICOPRINCIPAL
+								: proc.DXPRINCIPAL,
+							string.Empty
+						),
+						DXRELACIONADO = LimpiarTexto(proc.DXRELACIONADO, string.Empty),
+						COMPLICACION = LimpiarTexto(proc.COMPLICACION, string.Empty),
+						FORMAREALIZACIONACTOQUIR = LimpiarTexto(proc.FORMAREALIZACIONACTOQUIR, string.Empty),
+						VALORPROCEDIMIENTO = NormalizarNumero(proc.VALORPROCEDIMIENTO),
+						CODIGOENTIDAD = codigoEntidad,
+						EXTRANJERO = extranjero,
+						PAIS = pais,
+						HORA = horaLote
+					};
+
+					db.T_RIPS_PROCEDIMIENTOS.Add(entidadProc);
+				}
+			}
+
+			await db.SaveChangesAsync();
+
+			db.THISTORIAL.Add(new THISTORIAL
+			{
+				FECHA = DateTime.Now.Date,
+				HORA = DateTime.Now.TimeOfDay,
+				USUARIO = "",
+				DESCRIPCION =
+					$"RIPS {(modo == "EDITAR" ? "editado" : "guardado")} - Factura {facturaTrabajo} - Fecha {fechaAtencion:yyyy-MM-dd} - Hora lote {horaLote} - Paciente {objTAnamnesis.IDANAMNESIS_TEXTO} - {objTAnamnesis.NOMBRE_PACIENTE}"
+			});
+
+			await db.SaveChangesAsync();
+			await trx.CommitAsync();
+
+			// Interoperabilidad se ejecuta por fuera de la transacción del RIPS
+			var rdaOrquestador = new RdaOrquestadorService(_configuration);
+
+			var resultadoPaciente = await rdaOrquestador.GenerarPacientePorAnamnesisAsync(
+				objRips.IDANAMNESIS ?? 0,
+				objRips.IDDOCTOR,
+				fechaAtencion,
+				true
+			);
+
+			var resultadoConsulta = await rdaOrquestador.GenerarDesdeRipsAsync(objRips, true);
+
+			// OJO:
+			// La operación principal aquí es GUARDAR RIPS.
+			// Si el RIPS quedó guardado, respondemos ok=true y mandamos detalle de RDAs.
+			var mensajeFinal =
+				$"Factura:{facturaTrabajo}|Fecha:{fechaAtencion:yyyy-MM-dd}|Hora:{horaLote}" +
+				$"|RdaPaciente:{resultadoPaciente.Estado}|RdaConsulta:{resultadoConsulta.Estado}" +
+				$"|MsgPaciente:{resultadoPaciente.Mensaje}|MsgConsulta:{resultadoConsulta.Mensaje}";
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaGuardarDatosRips",
+				clientId,
+				true,
+				mensajeFinal
+			);
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine($"[Worker] Error GuardarDatosRips: {ex}");
+			await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false, ex.Message);
+		}
+	}
+
+
+
+	public async Task ConsultarRipsExistentes(string clientId, string payloadJson)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(payloadJson))
+			{
+				await _hubConnection.InvokeAsync("RespuestaConsultarRipsExistentes", clientId, "[]");
+				return;
+			}
+
+			var request = JsonConvert.DeserializeObject<ConsultarRipsRequest>(payloadJson);
+
+			if (request == null || (request.IDANAMNESIS ?? 0) <= 0)
+			{
+				await _hubConnection.InvokeAsync("RespuestaConsultarRipsExistentes", clientId, "[]");
+				return;
+			}
+
+			using var db = new AppDbContext();
+
+			var fechaIni = request.FECHAINI?.Date ?? DateTime.Now.Date.AddMonths(-1);
+			var fechaFin = request.FECHAFIN?.Date ?? DateTime.Now.Date;
+
+			var dx = await db.T_RIPS_DX
+				.Where(x =>
+					x.IDANAMNESIS == request.IDANAMNESIS &&
+					x.FECHACONSULTA >= fechaIni &&
+					x.FECHACONSULTA <= fechaFin)
+				.Select(x => new
+				{
+					x.IDANAMNESIS,
+					x.FACTURA,
+					FECHA = x.FECHACONSULTA,
+					x.HORA,
+					TIENE_DX = 1,
+					CODIGOENTIDAD = x.CODIGOENTIDAD
+				})
+				.ToListAsync();
+
+			var procs = await db.T_RIPS_PROCEDIMIENTOS
+				.Where(x =>
+					x.IDANAMNESIS == request.IDANAMNESIS &&
+					x.FECHAPROCEDIMIENTO >= fechaIni &&
+					x.FECHAPROCEDIMIENTO <= fechaFin)
+				.Select(x => new
+				{
+					x.IDANAMNESIS,
+					x.FACTURA,
+					FECHA = x.FECHAPROCEDIMIENTO,
+					x.HORA,
+					TIENE_DX = 0,
+					CODIGOENTIDAD = x.CODIGOENTIDAD
+				})
+				.ToListAsync();
+
+			var unidos = dx.Concat(procs)
+				.Select(x => new
+				{
+					x.IDANAMNESIS,
+					FACTURA = LimpiarTexto(x.FACTURA, string.Empty),
+					x.FECHA,
+					HORA = HoraVacia(x.HORA) ? (TimeSpan?)null : NormalizarHora(x.HORA),
+					x.TIENE_DX,
+					x.CODIGOENTIDAD
+				})
+				.GroupBy(x => new
+				{
+					x.IDANAMNESIS,
+					x.FACTURA,
+					x.FECHA,
+					x.HORA
+				})
+				.Select(g => new RipsListadoItem
+				{
+					IDANAMNESIS = g.Key.IDANAMNESIS,
+					FACTURA = g.Key.FACTURA,
+					FECHA = g.Key.FECHA,
+					HORA = g.Key.HORA,
+					TIENECONSULTA = g.Any(y => y.TIENE_DX == 1),
+					CANTIDADPROCEDIMIENTOS = g.Count(y => y.TIENE_DX == 0),
+					ENTIDAD = g.Select(y => y.CODIGOENTIDAD).FirstOrDefault(),
+					DESCRIPCION =
+						$"Consulta: {(g.Any(y => y.TIENE_DX == 1) ? "SI" : "NO")} | Procedimientos: {g.Count(y => y.TIENE_DX == 0)}"
+				})
+				.OrderByDescending(x => x.FECHA)
+				.ThenByDescending(x => x.HORA)
+				.ToList();
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaConsultarRipsExistentes",
+				clientId,
+				JsonConvert.SerializeObject(unidos)
+			);
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine($"[Worker] Error ConsultarRipsExistentes: {ex}");
+			await _hubConnection.InvokeAsync("RespuestaConsultarRipsExistentes", clientId, "[]");
+		}
+	}
+
+	public async Task EliminarRipsPorLlave(string clientId, string payloadJson)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(payloadJson))
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaEliminarRipsPorLlave",
+					clientId,
+					false,
+					"Payload vacío."
+				);
+				return;
+			}
+
+			var request = JsonConvert.DeserializeObject<EliminarRipsRequest>(payloadJson);
+
+			if (request == null)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaEliminarRipsPorLlave",
+					clientId,
+					false,
+					"Request inválido."
+				);
+				return;
+			}
+
+			if ((request.IDANAMNESIS ?? 0) <= 0 || request.FECHA == null)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaEliminarRipsPorLlave",
+					clientId,
+					false,
+					"Faltan datos para eliminar."
+				);
+				return;
+			}
+
+			using var db = new AppDbContext();
+			using var trx = await db.Database.BeginTransactionAsync();
+
+			var factura = LimpiarTexto(request.FACTURA, string.Empty);
+			var fecha = request.FECHA.Value.Date;
+			var hora = HoraVacia(request.HORA) ? (TimeSpan?)null : NormalizarHora(request.HORA);
+
+			var rdaConsultaEnviado = await EstaRdaConsultaEnviadoAsync(
+				db,
+				request.IDANAMNESIS ?? 0,
+				fecha,
+				hora
+			);
+
+			if (rdaConsultaEnviado)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaEliminarRipsPorLlave",
+					clientId,
+					false,
+					"No se puede eliminar este RIPS porque su RDA de consulta ya fue enviado."
+				);
+				return;
+			}
+
+			await EliminarRipsExistenteAsync(
+				db,
+				request.IDANAMNESIS ?? 0,
+				factura,
+				fecha,
+				hora
+			);
+
+			await EliminarRdaConsultaExistenteAsync(
+				db,
+				request.IDANAMNESIS ?? 0,
+				fecha,
+				hora
+			);
+
+			db.THISTORIAL.Add(new THISTORIAL
+			{
+				FECHA = DateTime.Now.Date,
+				HORA = DateTime.Now.TimeOfDay,
+				USUARIO = "",
+				DESCRIPCION =
+					$"RIPS eliminado - Factura {factura} - Fecha {fecha:yyyy-MM-dd} - Hora {(hora == null ? "SIN HORA" : hora.ToString())}"
+			});
+
+			await db.SaveChangesAsync();
+			await trx.CommitAsync();
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaEliminarRipsPorLlave",
+				clientId,
+				true,
+				"RIPS eliminado correctamente."
+			);
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine($"[Worker] Error EliminarRipsPorLlave: {ex}");
+			await _hubConnection.InvokeAsync(
+				"RespuestaEliminarRipsPorLlave",
+				clientId,
+				false,
+				ex.Message
+			);
+		}
+	}
+
+	public async Task ConsultarRipsDetallePorLlave(string clientId, string payloadJson)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(payloadJson))
+			{
+				await _hubConnection.InvokeAsync("RespuestaConsultarRipsDetallePorLlave", clientId, "null");
+				return;
+			}
+
+			var request = JsonConvert.DeserializeObject<ConsultarRipsDetalleRequest>(payloadJson);
+
+			if (request == null ||
+				(request.IDANAMNESIS ?? 0) <= 0 ||
+				request.FECHA == null)
+			{
+				await _hubConnection.InvokeAsync("RespuestaConsultarRipsDetallePorLlave", clientId, "null");
+				return;
+			}
+
+			using var db = new AppDbContext();
+
+			var fecha = request.FECHA.Value.Date;
+			var fechaSolo = fecha.Date;
+			var fechaFin = fechaSolo.AddDays(1);
+			var hora = HoraVacia(request.HORA) ? (TimeSpan?)null : NormalizarHora(request.HORA);
+			var factura = LimpiarTexto(request.FACTURA, string.Empty);
+			var idAnamnesis = request.IDANAMNESIS ?? 0;
+
+			T_RIPS_DX? dx = null;
+			List<T_RIPS_PROCEDIMIENTOS> procedimientos = new();
+
+			// =========================
+			// 1. intento exacto con hora
+			// =========================
+			if (hora != null)
+			{
+				if (TieneFacturaFuerte(factura))
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin &&
+							x.HORA == hora)
+						.FirstOrDefaultAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin &&
+							x.HORA == hora)
+						.OrderBy(x => x.ID)
+						.ToListAsync();
+				}
+				else
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin &&
+							x.HORA == hora)
+						.FirstOrDefaultAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin &&
+							x.HORA == hora)
+						.OrderBy(x => x.ID)
+						.ToListAsync();
+				}
+			}
+
+			// =========================
+			// 2. fallback exacto sin hora (legacy)
+			// =========================
+			if (dx == null && !procedimientos.Any())
+			{
+				if (TieneFacturaFuerte(factura))
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin &&
+							x.HORA == null)
+						.FirstOrDefaultAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin &&
+							x.HORA == null)
+						.OrderBy(x => x.ID)
+						.ToListAsync();
+				}
+				else
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin &&
+							x.HORA == null)
+						.FirstOrDefaultAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin &&
+							x.HORA == null)
+						.OrderBy(x => x.ID)
+						.ToListAsync();
+				}
+			}
+
+			// =========================
+			// 3. fallback amplio legacy sin filtrar hora
+			// =========================
+			if (dx == null && !procedimientos.Any())
+			{
+				if (TieneFacturaFuerte(factura))
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin)
+						.OrderBy(x => x.HORA)
+						.FirstOrDefaultAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin)
+						.OrderBy(x => x.HORA)
+						.ThenBy(x => x.ID)
+						.ToListAsync();
+				}
+				else
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin)
+						.OrderBy(x => x.HORA)
+						.FirstOrDefaultAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin)
+						.OrderBy(x => x.HORA)
+						.ThenBy(x => x.ID)
+						.ToListAsync();
+				}
+			}
+
+			if (dx == null && !procedimientos.Any())
+			{
+				await _hubConnection.InvokeAsync("RespuestaConsultarRipsDetallePorLlave", clientId, "null");
+				return;
+			}
+
+			var codigoEntidad = dx?.CODIGOENTIDAD
+				?? procedimientos.Select(x => x.CODIGOENTIDAD).FirstOrDefault()
+				?? string.Empty;
+
+			string nombreEntidad = string.Empty;
+
+			if (!string.IsNullOrWhiteSpace(codigoEntidad))
+			{
+				nombreEntidad = await db.TCODIGOS_EPS
+					.Where(x => x.CODIGO == codigoEntidad)
+					.Select(x => x.NOMBRE)
+					.FirstOrDefaultAsync() ?? string.Empty;
+			}
+
+			var horaRespuestaRaw = dx?.HORA ?? procedimientos.Select(x => x.HORA).FirstOrDefault();
+			var horaRespuesta = HoraVacia(horaRespuestaRaw) ? (TimeSpan?)null : NormalizarHora(horaRespuestaRaw);
+
+			var response = new RipsDetalleResponse
+			{
+				IDANAMNESIS = dx?.IDANAMNESIS ?? procedimientos.Select(x => x.IDANAMNESIS).FirstOrDefault(),
+				IDDOCTOR = dx?.IDDOCTOR ?? procedimientos.Select(x => x.IDDOCTOR).FirstOrDefault(),
+
+				FACTURA = factura,
+				FECHACONSULTA = dx?.FECHACONSULTA ?? procedimientos.Select(x => x.FECHAPROCEDIMIENTO).FirstOrDefault(),
+				HORA = horaRespuesta,
+
+				CODIGOENTIDAD = codigoEntidad,
+				NOMBREENTIDAD = nombreEntidad,
+
+				NUMEROAUTORIZACION = dx?.NUMEROAUTORIZACION ?? procedimientos.Select(x => x.NUMEROAUTORIZACION).FirstOrDefault(),
+				EXTRANJERO = dx?.EXTRANJERO ?? procedimientos.Select(x => x.EXTRANJERO).FirstOrDefault(),
+				PAIS = dx?.PAIS ?? procedimientos.Select(x => x.PAIS).FirstOrDefault(),
+
+				CODIGOCONSULTA = dx?.CODIGOCONSULTA,
+				FINALIDADCONSULTA = dx?.FINALIDADCONSULTA,
+				CAUSAEXTERNA = dx?.CAUSAEXTERNA,
+
+				CODIGODIAGNOSTICOPRINCIPAL = dx?.DX1,
+				CODIGODIAGNOSTICO2 = dx?.DX2,
+				CODIGODIAGNOSTICO3 = dx?.DX3,
+				CODIGODIAGNOSTICO4 = dx?.DX4,
+
+				TIPODIAGNOSTICO = dx?.TIPODIAGNOSTICO,
+
+				VALORCONSULTA = dx?.VALORCONSULTA,
+				VALORCUOTAMODERADORA = dx?.VALORCUOTAMODERADORA,
+				VALORNETO = dx?.VALORNETO,
+
+				PROCEDIMIENTOS = procedimientos
+					.Select(x => new RipsProcedimientoItem
+					{
+						CODIGOPROCEDIMIENTO = x.CODIGOPROCEDIMIENTO,
+						NOMBREPROCEDIMIENTO = string.Empty,
+						DXPRINCIPAL = x.DXPRINCIPAL,
+						DXRELACIONADO = x.DXRELACIONADO,
+						AMBITOREALIZACION = x.AMBITOREALIZACION,
+						FINALIDADPROCEDIMIENTI = x.FINALIDADPROCEDIMIENTI,
+						PERSONALQUEATIENDE = x.PERSONALQUEATIENDE,
+						VALORPROCEDIMIENTO = x.VALORPROCEDIMIENTO,
+						COMPLICACION = x.COMPLICACION,
+						FORMAREALIZACIONACTOQUIR = x.FORMAREALIZACIONACTOQUIR
+					})
+					.ToList()
+			};
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaConsultarRipsDetallePorLlave",
+				clientId,
+				JsonConvert.SerializeObject(response)
+			);
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine($"[Worker] Error ConsultarRipsDetallePorLlave: {ex}");
+			await _hubConnection.InvokeAsync("RespuestaConsultarRipsDetallePorLlave", clientId, "null");
+		}
+	}
+
+	//---------------------------helper para guardar rips--------------------------------------------//
+
+	private string NormalizarModo(string? modo)
+	{
+		var valor = (modo ?? string.Empty).Trim().ToUpperInvariant();
+		return valor == "EDITAR" ? "EDITAR" : "CREAR";
+	}
+
+	private bool HoraVacia(TimeSpan? hora)
+	{
+		return hora == null || hora.Value == TimeSpan.Zero;
+	}
+	private string LimpiarTexto(string? valor, string porDefecto = "")
+	{
+		return string.IsNullOrWhiteSpace(valor) ? porDefecto : valor.Trim();
+	}
+
+	private double NormalizarNumero(double? valor)
+	{
+		return valor ?? 0;
+	}
+
+	private bool TieneConsultaReal(DatosGuardarRips obj)
+	{
+		return !string.IsNullOrWhiteSpace(obj.CODIGOCONSULTA)
+			&& !string.IsNullOrWhiteSpace(obj.CODIGODIAGNOSTICOPRINCIPAL);
+	}
+
+	private List<RipsProcedimientoItem> NormalizarProcedimientos(DatosGuardarRips obj)
+	{
+		var lista = new List<RipsProcedimientoItem>();
+
+		if (obj.PROCEDIMIENTOS != null && obj.PROCEDIMIENTOS.Any())
+		{
+			lista.AddRange(
+				obj.PROCEDIMIENTOS
+					.Where(x => x != null)
+					.Select(x => new RipsProcedimientoItem
+					{
+						CODIGOPROCEDIMIENTO = LimpiarTexto(x.CODIGOPROCEDIMIENTO, ""),
+						NOMBREPROCEDIMIENTO = LimpiarTexto(x.NOMBREPROCEDIMIENTO, ""),
+						DXPRINCIPAL = LimpiarTexto(x.DXPRINCIPAL, ""),
+						DXRELACIONADO = LimpiarTexto(x.DXRELACIONADO, ""),
+						AMBITOREALIZACION = LimpiarTexto(x.AMBITOREALIZACION, "1"),
+						FINALIDADPROCEDIMIENTI = LimpiarTexto(x.FINALIDADPROCEDIMIENTI, "02"),
+						PERSONALQUEATIENDE = LimpiarTexto(x.PERSONALQUEATIENDE, ""),
+						VALORPROCEDIMIENTO = x.VALORPROCEDIMIENTO ?? 0,
+						COMPLICACION = LimpiarTexto(x.COMPLICACION, ""),
+						FORMAREALIZACIONACTOQUIR = LimpiarTexto(x.FORMAREALIZACIONACTOQUIR, "")
+					})
+					.Where(TieneProcedimientoReal)
+			);
+		}
+		else
+		{
+			var legacy = new RipsProcedimientoItem
+			{
+				CODIGOPROCEDIMIENTO = LimpiarTexto(obj.CODIGOPROCEDIMIENTO, ""),
+				DXPRINCIPAL = LimpiarTexto(obj.DXPRINCIPAL, ""),
+				DXRELACIONADO = LimpiarTexto(obj.DXRELACIONADO, ""),
+				AMBITOREALIZACION = LimpiarTexto(obj.AMBITOREALIZACION, "1"),
+				FINALIDADPROCEDIMIENTI = LimpiarTexto(obj.FINALIDADPROCEDIMIENTI, "02"),
+				PERSONALQUEATIENDE = LimpiarTexto(obj.PERSONALQUEATIENDE, ""),
+				VALORPROCEDIMIENTO = obj.VALORPROCEDIMIENTO ?? 0,
+				COMPLICACION = LimpiarTexto(obj.COMPLICACION, ""),
+				FORMAREALIZACIONACTOQUIR = LimpiarTexto(obj.FORMAREALIZACIONACTOQUIR, "")
+			};
+
+			if (TieneProcedimientoReal(legacy))
+			{
+				lista.Add(legacy);
+			}
+		}
+
+		return lista;
+	}
+
+	private bool TieneProcedimientoReal(RipsProcedimientoItem item)
+	{
+		return !string.IsNullOrWhiteSpace(item.CODIGOPROCEDIMIENTO);
+	}
+
+	private async Task<bool> ExisteRipsAsync(
+	AppDbContext db,
+	int idAnamnesis,
+	string factura,
+	DateTime fecha,
+	TimeSpan hora)
+	{
+		hora = NormalizarHora(hora);
+		var fechaSolo = fecha.Date;
+		var fechaFin = fechaSolo.AddDays(1);
+
+		if (TieneFacturaFuerte(factura))
+		{
+			var existeDxId = await db.T_RIPS_DX
+				.Where(x =>
+					x.IDANAMNESIS == idAnamnesis &&
+					x.FECHACONSULTA >= fechaSolo &&
+					x.FECHACONSULTA < fechaFin &&
+					x.FACTURA == factura &&
+					x.HORA == hora)
+				.Select(x => (int?)x.ID)
+				.FirstOrDefaultAsync();
+
+			if (existeDxId.HasValue)
+				return true;
+
+			var existeProcId = await db.T_RIPS_PROCEDIMIENTOS
+				.Where(x =>
+					x.IDANAMNESIS == idAnamnesis &&
+					x.FECHAPROCEDIMIENTO >= fechaSolo &&
+					x.FECHAPROCEDIMIENTO < fechaFin &&
+					x.FACTURA == factura &&
+					x.HORA == hora)
+				.Select(x => (int?)x.ID)
+				.FirstOrDefaultAsync();
+
+			return existeProcId.HasValue;
+		}
+		else
+		{
+			var existeDxId = await db.T_RIPS_DX
+				.Where(x =>
+					x.IDANAMNESIS == idAnamnesis &&
+					x.FECHACONSULTA >= fechaSolo &&
+					x.FECHACONSULTA < fechaFin &&
+					x.HORA == hora)
+				.Select(x => (int?)x.ID)
+				.FirstOrDefaultAsync();
+
+			if (existeDxId.HasValue)
+				return true;
+
+			var existeProcId = await db.T_RIPS_PROCEDIMIENTOS
+				.Where(x =>
+					x.IDANAMNESIS == idAnamnesis &&
+					x.FECHAPROCEDIMIENTO >= fechaSolo &&
+					x.FECHAPROCEDIMIENTO < fechaFin &&
+					x.HORA == hora)
+				.Select(x => (int?)x.ID)
+				.FirstOrDefaultAsync();
+
+			return existeProcId.HasValue;
+		}
+	}
+
+	private async Task EliminarRipsExistenteAsync(
+	AppDbContext db,
+	int idAnamnesis,
+	string factura,
+	DateTime fecha,
+	TimeSpan? hora)
+	{
+		var fechaSolo = fecha.Date;
+		var fechaFin = fechaSolo.AddDays(1);
+		var horaNormalizada = HoraVacia(hora) ? (TimeSpan?)null : NormalizarHora(hora);
+
+		List<T_RIPS_DX> dx;
+		List<T_RIPS_PROCEDIMIENTOS> procedimientos;
+
+		if (TieneFacturaFuerte(factura))
+		{
+			if (horaNormalizada != null)
+			{
+				dx = await db.T_RIPS_DX
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FACTURA == factura &&
+						x.FECHACONSULTA >= fechaSolo &&
+						x.FECHACONSULTA < fechaFin &&
+						x.HORA == horaNormalizada)
+					.ToListAsync();
+
+				procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FACTURA == factura &&
+						x.FECHAPROCEDIMIENTO >= fechaSolo &&
+						x.FECHAPROCEDIMIENTO < fechaFin &&
+						x.HORA == horaNormalizada)
+					.ToListAsync();
+
+				// fallback legacy: por si el registro viejo estaba con HORA NULL
+				if (!dx.Any() && !procedimientos.Any())
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin &&
+							x.HORA == null)
+						.ToListAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin &&
+							x.HORA == null)
+						.ToListAsync();
+				}
+			}
+			else
+			{
+				dx = await db.T_RIPS_DX
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FACTURA == factura &&
+						x.FECHACONSULTA >= fechaSolo &&
+						x.FECHACONSULTA < fechaFin &&
+						x.HORA == null)
+					.ToListAsync();
+
+				procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FACTURA == factura &&
+						x.FECHAPROCEDIMIENTO >= fechaSolo &&
+						x.FECHAPROCEDIMIENTO < fechaFin &&
+						x.HORA == null)
+					.ToListAsync();
+
+				// fallback por si algún registro vino con hora no nula
+				if (!dx.Any() && !procedimientos.Any())
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin)
+						.ToListAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FACTURA == factura &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin)
+						.ToListAsync();
+				}
+			}
+		}
+		else
+		{
+			if (horaNormalizada != null)
+			{
+				dx = await db.T_RIPS_DX
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FECHACONSULTA >= fechaSolo &&
+						x.FECHACONSULTA < fechaFin &&
+						x.HORA == horaNormalizada)
+					.ToListAsync();
+
+				procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FECHAPROCEDIMIENTO >= fechaSolo &&
+						x.FECHAPROCEDIMIENTO < fechaFin &&
+						x.HORA == horaNormalizada)
+					.ToListAsync();
+
+				// fallback legacy: hora null
+				if (!dx.Any() && !procedimientos.Any())
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHACONSULTA >= fechaSolo &&
+						    x.FECHACONSULTA < fechaFin &&
+							x.HORA == null)
+						.ToListAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin &&
+							x.HORA == null)
+						.ToListAsync();
+				}
+			}
+			else
+			{
+				dx = await db.T_RIPS_DX
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FECHACONSULTA >= fechaSolo &&
+						x.FECHACONSULTA < fechaFin &&
+						x.HORA == null)
+					.ToListAsync();
+
+				procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+					.Where(x =>
+						x.IDANAMNESIS == idAnamnesis &&
+						x.FECHAPROCEDIMIENTO >= fechaSolo &&
+						x.FECHAPROCEDIMIENTO < fechaFin &&
+						x.HORA == null)
+					.ToListAsync();
+
+				// fallback amplio legacy
+				if (!dx.Any() && !procedimientos.Any())
+				{
+					dx = await db.T_RIPS_DX
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHACONSULTA >= fechaSolo &&
+							x.FECHACONSULTA < fechaFin)
+						.ToListAsync();
+
+					procedimientos = await db.T_RIPS_PROCEDIMIENTOS
+						.Where(x =>
+							x.IDANAMNESIS == idAnamnesis &&
+							x.FECHAPROCEDIMIENTO >= fechaSolo &&
+							x.FECHAPROCEDIMIENTO < fechaFin)
+						.ToListAsync();
+				}
+			}
+		}
+
+		if (dx.Any())
+			db.T_RIPS_DX.RemoveRange(dx);
+
+		if (procedimientos.Any())
+			db.T_RIPS_PROCEDIMIENTOS.RemoveRange(procedimientos);
+
+		if (dx.Any() || procedimientos.Any())
+		{
+			await db.SaveChangesAsync();
+		}
+	}
+
+	private async Task<string> ObtenerCodigoPrestadorAsync(AppDbContext db, int idDoctor)
+	{
+		if (idDoctor <= 0) return "000000";
+
+		string query = @"
+    SELECT i.CODIGO_PRESTADOR
+    FROM TINFORMACIONREPORTES i
+    INNER JOIN TDATOSDOCTORES d ON d.IDREPORTE = i.ID
+    WHERE d.ID = {0}";
+
+		var codigoPrestador = await db.TINFORMACIONREPORTES
+			.FromSqlRaw(query, idDoctor)
+			.Select(i => i.CODIGO_PRESTADOR)
+			.FirstOrDefaultAsync();
+
+		return string.IsNullOrWhiteSpace(codigoPrestador) ? "000000" : codigoPrestador.Trim();
+	}
+
+	private TimeSpan ObtenerHoraLoteNormalizada()
+	{
+		var ahora = DateTime.Now;
+		return new TimeSpan(ahora.Hour, ahora.Minute, 0);
+	}
+
+	private TimeSpan NormalizarHora(TimeSpan? hora)
+	{
+		if (hora == null) return TimeSpan.Zero;
+		return new TimeSpan(hora.Value.Hours, hora.Value.Minutes, 0);
+	}
+
+	private bool TieneFacturaFuerte(string? factura)
+	{
+		if (string.IsNullOrWhiteSpace(factura)) return false;
+
+		var valor = factura.Trim().ToUpperInvariant();
+		return valor != "PENDIENTE";
+	}
+
+	private async Task EliminarRdaConsultaExistenteAsync(
+	AppDbContext db,
+	int idAnamnesis,
+	DateTime? fechaAtencion,
+	TimeSpan? horaAtencion)
+	{
+		if (idAnamnesis <= 0 || !fechaAtencion.HasValue)
+			return;
+
+		var fechaSolo = fechaAtencion.Value.Date;
+		var fechaFin = fechaSolo.AddDays(1);
+		var horaNormalizada = HoraVacia(horaAtencion)
+			? (TimeSpan?)null
+			: NormalizarHora(horaAtencion);
+
+		var queryBase = db.TRDA_DOCUMENTO.Where(x =>
+			x.IDANAMNESIS == idAnamnesis &&
+			x.TIPO_DOCUMENTO == "RDA_CONSULTA_INTERNO" &&
+			x.FECHA_ATENCION >= fechaSolo &&
+			x.FECHA_ATENCION < fechaFin);
+
+		List<TRDA_DOCUMENTO> rows;
+
+		if (horaNormalizada.HasValue)
+		{
+			rows = await queryBase
+				.Where(x => x.HORA_ATENCION == horaNormalizada.Value)
+				.ToListAsync();
+
+			if (!rows.Any())
+			{
+				rows = await queryBase
+					.Where(x => x.HORA_ATENCION == null)
+					.ToListAsync();
+			}
+		}
+		else
+		{
+			rows = await queryBase
+				.Where(x => x.HORA_ATENCION == null)
+				.ToListAsync();
+
+			if (!rows.Any())
+			{
+				rows = await queryBase.ToListAsync();
+			}
+		}
+
+		if (rows.Any())
+		{
+			db.TRDA_DOCUMENTO.RemoveRange(rows);
+			await db.SaveChangesAsync();
+		}
+	}
+
+	private async Task<bool> EstaRdaConsultaEnviadoAsync(
+		AppDbContext db,
+		int idAnamnesis,
+		DateTime fechaAtencion,
+		TimeSpan? horaAtencion)
+	{
+		var fechaSolo = fechaAtencion.Date;
+		var fechaFin = fechaSolo.AddDays(1);
+		var horaNormalizada = HoraVacia(horaAtencion)
+			? (TimeSpan?)null
+			: NormalizarHora(horaAtencion);
+
+		var queryBase = db.TRDA_DOCUMENTO.Where(x =>
+			x.IDANAMNESIS == idAnamnesis &&
+			x.TIPO_DOCUMENTO == "RDA_CONSULTA_INTERNO" &&
+			x.FECHA_ATENCION >= fechaSolo &&
+			x.FECHA_ATENCION < fechaFin);
+
+		if (horaNormalizada.HasValue)
+		{
+			var exacto = await queryBase.CountAsync(x =>
+				x.HORA_ATENCION == horaNormalizada.Value &&
+				x.ESTADO == "ENVIADO") > 0;
+
+			if (exacto)
+				return true;
+
+			var legacyNull = await queryBase.CountAsync(x =>
+				x.HORA_ATENCION == null &&
+				x.ESTADO == "ENVIADO") > 0;
+
+			return legacyNull;
+		}
+		else
+		{
+			var nullExacto = await queryBase.CountAsync(x =>
+				x.HORA_ATENCION == null &&
+				x.ESTADO == "ENVIADO") > 0;
+
+			if (nullExacto)
+				return true;
+
+			var fallbackAmplio = await queryBase.CountAsync(x =>
+				x.ESTADO == "ENVIADO") > 0;
+
+			return fallbackAmplio;
+		}
+	}
+		
+	//----------------------------------------------------------------------------------------------------------------------//
+
+	public async Task ObtenerFacturasPorIdEntreFechas(string clientId, string modeloDatosParaConsultarFacturasEntreFechas)
     {
         var settings = new JsonSerializerSettings();
         var objDatosParaConsultarFacturasEntreFechas = JsonConvert.DeserializeObject<RespuestaConsultarFacturasEntreFechas>(modeloDatosParaConsultarFacturasEntreFechas, settings);
@@ -2060,6 +3463,377 @@ public class Worker : BackgroundService
 		var respuesta = JsonConvert.SerializeObject(result);
 		await _hubConnection.InvokeAsync("RespuestaPresentarRips", clientId, respuesta);
 	}
+
+	//-------------------------------------interoperabilidad------------------------------------------------//
+
+	public async Task ConsultarRdaControl(string clientId, string filtroJson)
+	{
+		try
+		{
+			var filtro = string.IsNullOrWhiteSpace(filtroJson)
+				? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.RdaControlFiltro()
+				: JsonConvert.DeserializeObject<ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.RdaControlFiltro>(filtroJson)
+				  ?? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.RdaControlFiltro();
+
+			var service = new RdaControlConsultaService();
+			var respuesta = await service.ConsultarAsync(filtro);
+			var payload = JsonConvert.SerializeObject(respuesta);
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarRdaControl", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				items = new object[] { },
+				error = ex.Message
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarRdaControl", clientId, payload);
+		}
+	}
+
+	public async Task ReenviarRda(string clientId, int idRda)
+	{
+		try
+		{
+			var rdaOrquestador = new RdaOrquestadorService(_configuration);
+			var resultado = await rdaOrquestador.EnviarPorIdAsync(idRda);
+			var payload = JsonConvert.SerializeObject(resultado);
+
+			await _hubConnection.InvokeAsync("RespuestaReenviarRda", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				idRda = idRda,
+				estado = "ERROR",
+				mensaje = ex.Message
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaReenviarRda", clientId, payload);
+		}
+	}
+
+	public async Task RegenerarRda(string clientId, int idRda)
+	{
+		try
+		{
+			var rdaOrquestador = new RdaOrquestadorService(_configuration);
+			var resultado = await rdaOrquestador.RegenerarPorIdAsync(idRda, false);
+			var payload = JsonConvert.SerializeObject(resultado);
+
+			await _hubConnection.InvokeAsync("RespuestaRegenerarRda", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				idRda = idRda,
+				estado = "ERROR",
+				mensaje = ex.Message
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaRegenerarRda", clientId, payload);
+		}
+	}
+
+	public async Task ConsultarDetalleRda(string clientId, int idRda)
+	{
+		try
+		{
+			var service = new RdaDetalleConsultaService();
+			var detalle = await service.ConsultarPorIdAsync(idRda);
+			var payload = JsonConvert.SerializeObject(detalle);
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarDetalleRda", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				mensaje = ex.Message
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarDetalleRda", clientId, payload);
+		}
+	}
+
+	public async Task ConsultarHistorialRda(string clientId, int idRda)
+	{
+		try
+		{
+			var service = new RdaHistorialConsultaService();
+			var respuesta = await service.ConsultarPorDocumentoAsync(idRda);
+			var payload = JsonConvert.SerializeObject(respuesta);
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarHistorialRda", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				mensaje = ex.Message,
+				items = new object[] { }
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarHistorialRda", clientId, payload);
+		}
+	}
+
+	public async Task ReenviarRdaLote(string clientId, string idsJson)
+	{
+		var settings = new JsonSerializerSettings
+		{
+			ContractResolver = new CamelCasePropertyNamesContractResolver()
+		};
+
+		async Task EmitirProgresoAsync(RdaProcesoMasivoProgressDto p)
+		{
+			try
+			{
+				p.Accion = "REENVIO_MASIVO";
+				var json = JsonConvert.SerializeObject(p, settings);
+				await _hubConnection.InvokeAsync("ProgresoRda", clientId, json);
+			}
+			catch
+			{
+				// no tumbar proceso por progreso
+			}
+		}
+
+		try
+		{
+			var ids = string.IsNullOrWhiteSpace(idsJson)
+				? new List<int>()
+				: JsonConvert.DeserializeObject<List<int>>(idsJson) ?? new List<int>();
+
+			ids = ids
+				.Where(x => x > 0)
+				.Distinct()
+				.ToList();
+
+			var total = ids.Count;
+			var procesadas = 0;
+			var exitosas = 0;
+			var fallidas = 0;
+			var resultados = new List<RdaProcesoResultado>();
+
+			await EmitirProgresoAsync(new RdaProcesoMasivoProgressDto
+			{
+				Total = total,
+				Procesadas = 0,
+				Exitosas = 0,
+				Fallidas = 0,
+				Mensaje = "Iniciando reenvío masivo...",
+				UltimoDocumento = null,
+				EnCurso = true
+			});
+
+			var rdaOrquestador = new RdaOrquestadorService(_configuration);
+
+			foreach (var idRda in ids)
+			{
+				RdaProcesoResultado resultado;
+
+				try
+				{
+					resultado = await rdaOrquestador.EnviarPorIdAsync(idRda);
+				}
+				catch (Exception ex)
+				{
+					resultado = new RdaProcesoResultado
+					{
+						Ok = false,
+						IdRda = idRda,
+						Estado = "ERROR",
+						Mensaje = ex.Message
+					};
+				}
+
+				resultados.Add(resultado);
+
+				procesadas++;
+				if (resultado.Ok) exitosas++;
+				else fallidas++;
+
+				await EmitirProgresoAsync(new RdaProcesoMasivoProgressDto
+				{
+					Total = total,
+					Procesadas = procesadas,
+					Exitosas = exitosas,
+					Fallidas = fallidas,
+					Mensaje = resultado.Ok
+						? $"Reenviado documento {idRda}"
+						: $"Falló reenvío documento {idRda}: {resultado.Mensaje}",
+					UltimoDocumento = idRda,
+					EnCurso = procesadas < total
+				});
+			}
+
+			var respuesta = new RdaLoteResultadoDto
+			{
+				Ok = fallidas == 0,
+				Accion = "REENVIO_MASIVO",
+				Total = total,
+				Procesadas = procesadas,
+				Exitosas = exitosas,
+				Fallidas = fallidas,
+				Mensaje = $"Reenvío masivo finalizado. Exitosas: {exitosas}. Fallidas: {fallidas}.",
+				Resultados = resultados
+			};
+
+			var payload = JsonConvert.SerializeObject(respuesta, settings);
+			await _hubConnection.InvokeAsync("RespuestaReenviarRdaLote", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var respuesta = new RdaLoteResultadoDto
+			{
+				Ok = false,
+				Accion = "REENVIO_MASIVO",
+				Total = 0,
+				Procesadas = 0,
+				Exitosas = 0,
+				Fallidas = 0,
+				Mensaje = ex.Message,
+				Resultados = new List<RdaProcesoResultado>()
+			};
+
+			var payload = JsonConvert.SerializeObject(respuesta, settings);
+			await _hubConnection.InvokeAsync("RespuestaReenviarRdaLote", clientId, payload);
+		}
+	}
+
+	public async Task RegenerarRdaLote(string clientId, string idsJson)
+	{
+		var settings = new JsonSerializerSettings
+		{
+			ContractResolver = new CamelCasePropertyNamesContractResolver()
+		};
+
+		async Task EmitirProgresoAsync(RdaProcesoMasivoProgressDto p)
+		{
+			try
+			{
+				p.Accion = "REGENERACION_MASIVA";
+				var json = JsonConvert.SerializeObject(p, settings);
+				await _hubConnection.InvokeAsync("ProgresoRda", clientId, json);
+			}
+			catch
+			{
+				// no tumbar proceso por progreso
+			}
+		}
+
+		try
+		{
+			var ids = string.IsNullOrWhiteSpace(idsJson)
+				? new List<int>()
+				: JsonConvert.DeserializeObject<List<int>>(idsJson) ?? new List<int>();
+
+			ids = ids
+				.Where(x => x > 0)
+				.Distinct()
+				.ToList();
+
+			var total = ids.Count;
+			var procesadas = 0;
+			var exitosas = 0;
+			var fallidas = 0;
+			var resultados = new List<RdaProcesoResultado>();
+
+			await EmitirProgresoAsync(new RdaProcesoMasivoProgressDto
+			{
+				Total = total,
+				Procesadas = 0,
+				Exitosas = 0,
+				Fallidas = 0,
+				Mensaje = "Iniciando regeneración masiva...",
+				UltimoDocumento = null,
+				EnCurso = true
+			});
+
+			var rdaOrquestador = new RdaOrquestadorService(_configuration);
+
+			foreach (var idRda in ids)
+			{
+				RdaProcesoResultado resultado;
+
+				try
+				{
+					resultado = await rdaOrquestador.RegenerarPorIdAsync(idRda, false);
+				}
+				catch (Exception ex)
+				{
+					resultado = new RdaProcesoResultado
+					{
+						Ok = false,
+						IdRda = idRda,
+						Estado = "ERROR",
+						Mensaje = ex.Message
+					};
+				}
+
+				resultados.Add(resultado);
+
+				procesadas++;
+				if (resultado.Ok) exitosas++;
+				else fallidas++;
+
+				await EmitirProgresoAsync(new RdaProcesoMasivoProgressDto
+				{
+					Total = total,
+					Procesadas = procesadas,
+					Exitosas = exitosas,
+					Fallidas = fallidas,
+					Mensaje = resultado.Ok
+						? $"Regenerado documento {idRda}"
+						: $"Falló regeneración documento {idRda}: {resultado.Mensaje}",
+					UltimoDocumento = idRda,
+					EnCurso = procesadas < total
+				});
+			}
+
+			var respuesta = new RdaLoteResultadoDto
+			{
+				Ok = fallidas == 0,
+				Accion = "REGENERACION_MASIVA",
+				Total = total,
+				Procesadas = procesadas,
+				Exitosas = exitosas,
+				Fallidas = fallidas,
+				Mensaje = $"Regeneración masiva finalizada. Exitosas: {exitosas}. Fallidas: {fallidas}.",
+				Resultados = resultados
+			};
+
+			var payload = JsonConvert.SerializeObject(respuesta, settings);
+			await _hubConnection.InvokeAsync("RespuestaRegenerarRdaLote", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var respuesta = new RdaLoteResultadoDto
+			{
+				Ok = false,
+				Accion = "REGENERACION_MASIVA",
+				Total = 0,
+				Procesadas = 0,
+				Exitosas = 0,
+				Fallidas = 0,
+				Mensaje = ex.Message,
+				Resultados = new List<RdaProcesoResultado>()
+			};
+
+			var payload = JsonConvert.SerializeObject(respuesta, settings);
+			await _hubConnection.InvokeAsync("RespuestaRegenerarRdaLote", clientId, payload);
+		}
+	}
+	//------------------------------------------------------------------------------------------------//
 
 
 
@@ -3763,10 +5537,256 @@ public class Worker : BackgroundService
     }
 
 
+	private async Task ProcesarRdaDesdeRipsAsync(DatosGuardarRips objRips)
+	{
+		try
+		{
+			var rdaContext = RdaGeneracionContextMapper.FromDatosGuardarRips(objRips);
+			var validacionRda = RdaGeneracionContextValidator.Validate(rdaContext);
+
+			var objHistorialServicios = new THISTORIALServicios();
+
+			if (!validacionRda.Ok)
+			{
+				await objHistorialServicios.Agregar(new THISTORIAL()
+				{
+					FECHA = DateTime.Now.Date,
+					HORA = DateTime.Now.TimeOfDay,
+					USUARIO = "",
+					DESCRIPCION = "RDA contexto inválido: " + validacionRda.Error
+				});
+				return;
+			}
+
+			await objHistorialServicios.Agregar(new THISTORIAL()
+			{
+				FECHA = DateTime.Now.Date,
+				HORA = DateTime.Now.TimeOfDay,
+				USUARIO = "",
+				DESCRIPCION =
+					$"RDA contexto listo. IdAnamnesis={rdaContext.IdAnamnesis}, " +
+					$"IdDoctor={rdaContext.IdDoctor}, " +
+					$"FechaConsulta={rdaContext.FechaConsulta:yyyy-MM-dd}, " +
+					$"CodigoConsulta={rdaContext.CodigoConsulta}, " +
+					$"CodigoDiagnosticoPrincipal={rdaContext.CodigoDiagnosticoPrincipal}, " +
+					$"CodigoProcedimiento={rdaContext.CodigoProcedimiento}, " +
+					$"Factura={rdaContext.Factura}"
+			});
+
+			var documentoInternoService = new RdaDocumentoInternoService();
+			var documentoInterno = await documentoInternoService.ConstruirDesdeContexto(rdaContext);
+
+			var consultaDocumento = documentoInterno.Documento?.Consulta ?? new RdaConsultaSource();
+			var encounterDocumento = consultaDocumento.Encounter ?? new RdaEncounterSource();
+			var antecedentesDocumento = consultaDocumento.Antecedentes ?? new RdaAntecedentesSource();
+			var diagnosticoDocumento = consultaDocumento.Diagnostico ?? new RdaDiagnosticoSource();
+			var procedimientoDocumento = consultaDocumento.Procedimiento ?? new RdaProcedimientoSource();
+			var prestadorDocumento = documentoInterno.Documento?.Prestador ?? new RdaPrestadorSource();
+
+			await objHistorialServicios.Agregar(new THISTORIAL()
+			{
+				FECHA = DateTime.Now.Date,
+				HORA = DateTime.Now.TimeOfDay,
+				USUARIO = "",
+				DESCRIPCION =
+					$"RDA documento consolidado. " +
+					$"Paciente={encounterDocumento.Nombres} {encounterDocumento.Apellidos}, " +
+					$"Doc={encounterDocumento.TipoDocumento} {encounterDocumento.NumeroDocumento}, " +
+					$"Prestador={prestadorDocumento.NombrePrestador}, " +
+					$"Doctor={prestadorDocumento.NombreDoctor}, " +
+					$"Consulta={encounterDocumento.CodigoConsulta}, " +
+					$"Dx={encounterDocumento.CodigoDiagnosticoPrincipal}, " +
+					$"Proc={encounterDocumento.CodigoProcedimiento}, " +
+					$"Motivo={antecedentesDocumento.MotivoConsulta}, " +
+					$"Dx1={diagnosticoDocumento.Diagnostico1}, " +
+					$"ProcReal={procedimientoDocumento.CodigoProcedimiento}"
+			});
+
+			var jsonRdaInterno = JsonConvert.SerializeObject(documentoInterno, Formatting.Indented);
+
+			var bundleFhir = RdaFhirConsultaMapper.Map(documentoInterno);
+			var jsonFhir = JsonConvert.SerializeObject(bundleFhir, Formatting.Indented);
+
+			var validacionFhir = RdaFhirConsultaValidator.Validate(bundleFhir);
+
+			if (!validacionFhir.Ok)
+			{
+				await objHistorialServicios.Agregar(new THISTORIAL()
+				{
+					FECHA = DateTime.Now.Date,
+					HORA = DateTime.Now.TimeOfDay,
+					USUARIO = "",
+					DESCRIPCION = "RDA FHIR inválido: " + validacionFhir.Error
+				});
+				return;
+			}
+
+			await objHistorialServicios.Agregar(new THISTORIAL()
+			{
+				FECHA = DateTime.Now.Date,
+				HORA = DateTime.Now.TimeOfDay,
+				USUARIO = "",
+				DESCRIPCION =
+					$"RDA FHIR válido. " +
+					$"Tipo={documentoInterno.TipoDocumento}, " +
+					$"Paciente={encounterDocumento.Nombres} {encounterDocumento.Apellidos}, " +
+					$"Prestador={prestadorDocumento.NombrePrestador}, " +
+					$"LongitudInterno={jsonRdaInterno.Length}, " +
+					$"LongitudFhir={jsonFhir.Length}"
+			});
+
+			var options = new RdaOptions();
+			_configuration.GetSection("Interoperabilidad:Rda").Bind(options);
+
+			var snapshotInterno = options.GuardarSnapshot ? jsonRdaInterno : null;
+
+			var objRdaDocumentoServicios = new TRDADOCUMENTOServicios();
+
+			var idEvolucionRda = encounterDocumento.IdEvolucion > 0
+				? encounterDocumento.IdEvolucion
+				: (int?)null;
+
+			var existente = await objRdaDocumentoServicios.ConsultarPorAnamnesisYEvolucion(
+				rdaContext.IdAnamnesis,
+				idEvolucionRda,
+				documentoInterno.TipoDocumento);
+
+			int idRdaFinal;
+
+			if (existente.ID > 0)
+			{
+				existente.FECHA_ATENCION = encounterDocumento.FechaConsulta;
+				existente.ESTADO = "GENERADO";
+				existente.JSON_RDAstr = jsonFhir;
+				existente.JSON_SNAPSHOTstr = snapshotInterno;
+				existente.MENSAJE_ERROR = null;
+				existente.FECHA_GENERACION = DateTime.Now;
+				existente.FECHA_ENVIO = null;
+				existente.INTENTOS = 0;
+				existente.CODIGO_HTTP = null;
+				existente.RESPUESTA_APIstr = null;
+				existente.REQUEST_APIstr = null;
+
+				var actualizado = await objRdaDocumentoServicios.Editar(existente.ID, existente);
+				if (!actualizado)
+				{
+					await objHistorialServicios.Agregar(new THISTORIAL()
+					{
+						FECHA = DateTime.Now.Date,
+						HORA = DateTime.Now.TimeOfDay,
+						USUARIO = "",
+						DESCRIPCION =
+							$"Error actualizando RDA en TRDA_DOCUMENTO. " +
+							$"IdRda={existente.ID}, " +
+							$"IdAnamnesis={rdaContext.IdAnamnesis}"
+					});
+					return;
+				}
+
+				idRdaFinal = existente.ID;
+
+				await objHistorialServicios.Agregar(new THISTORIAL()
+				{
+					FECHA = DateTime.Now.Date,
+					HORA = DateTime.Now.TimeOfDay,
+					USUARIO = "",
+					DESCRIPCION =
+						$"RDA actualizado en TRDA_DOCUMENTO. " +
+						$"IdRda={existente.ID}, " +
+						$"Actualizado=SI, " +
+						$"IdAnamnesis={rdaContext.IdAnamnesis}, " +
+						$"Estado=GENERADO, " +
+						$"Formato=FHIR_BUNDLE, " +
+						$"Snapshot={(snapshotInterno != null ? "SI" : "NO")}"
+				});
+			}
+			else
+			{
+				var entidadRda = new TRDA_DOCUMENTO
+				{
+					IDANAMNESIS = rdaContext.IdAnamnesis,
+					IDEVOLUCION = idEvolucionRda,
+					FECHA_ATENCION = encounterDocumento.FechaConsulta,
+					TIPO_DOCUMENTO = documentoInterno.TipoDocumento,
+					ESTADO = "GENERADO",
+					JSON_RDAstr = jsonFhir,
+					JSON_SNAPSHOTstr = snapshotInterno,
+					MENSAJE_ERROR = null,
+					FECHA_GENERACION = DateTime.Now,
+					FECHA_ENVIO = null,
+					INTENTOS = 0,
+					CODIGO_HTTP = null,
+					RESPUESTA_APIstr = null,
+					REQUEST_APIstr = null
+				};
+
+				idRdaFinal = await objRdaDocumentoServicios.Agregar(entidadRda);
+
+				if (idRdaFinal <= 0)
+				{
+					await objHistorialServicios.Agregar(new THISTORIAL()
+					{
+						FECHA = DateTime.Now.Date,
+						HORA = DateTime.Now.TimeOfDay,
+						USUARIO = "",
+						DESCRIPCION =
+							$"Error guardando RDA en TRDA_DOCUMENTO. " +
+							$"IdAnamnesis={rdaContext.IdAnamnesis}"
+					});
+					return;
+				}
+
+				await objHistorialServicios.Agregar(new THISTORIAL()
+				{
+					FECHA = DateTime.Now.Date,
+					HORA = DateTime.Now.TimeOfDay,
+					USUARIO = "",
+					DESCRIPCION =
+						$"RDA guardado en TRDA_DOCUMENTO. " +
+						$"IdRda={idRdaFinal}, " +
+						$"IdAnamnesis={rdaContext.IdAnamnesis}, " +
+						$"Estado=GENERADO, " +
+						$"Formato=FHIR_BUNDLE, " +
+						$"Snapshot={(snapshotInterno != null ? "SI" : "NO")}"
+				});
+			}
+
+			if (options.Enabled && options.EnviarAutomaticamente && idRdaFinal > 0)
+			{
+				var envioService = new RdaEnvioService(_configuration);
+				var envioResultado = await envioService.EnviarDocumentoPorIdAsync(idRdaFinal);
+
+				await objHistorialServicios.Agregar(new THISTORIAL()
+				{
+					FECHA = DateTime.Now.Date,
+					HORA = DateTime.Now.TimeOfDay,
+					USUARIO = "",
+					DESCRIPCION =
+						$"RDA intento de envío. " +
+						$"IdRda={idRdaFinal}, " +
+						$"Ok={(envioResultado.Ok ? "SI" : "NO")}, " +
+						$"CodigoHttp={envioResultado.CodigoHttp}, " +
+						$"Mensaje={envioResultado.Mensaje}"
+				});
+			}
+		}
+		catch (Exception ex)
+		{
+			var objHistorialServicios = new THISTORIALServicios();
+			await objHistorialServicios.Agregar(new THISTORIAL()
+			{
+				FECHA = DateTime.Now.Date,
+				HORA = DateTime.Now.TimeOfDay,
+				USUARIO = "",
+				DESCRIPCION = "Error procesando RDA desde RIPS: " + ex.Message
+			});
+		}
+	}
 
 
 
-    public async Task BorrarDatosAgenda(string clientId, string datosAgenda)
+
+	public async Task BorrarDatosAgenda(string clientId, string datosAgenda)
     {
 
     }

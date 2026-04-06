@@ -33,5 +33,6 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Entidades
         public string? CODIGOENTIDAD { get; set; }
         public string? EXTRANJERO { get; set; }
         public string? PAIS { get; set; }
-    }
+		public TimeSpan? HORA { get; set; }
+	}
 }
