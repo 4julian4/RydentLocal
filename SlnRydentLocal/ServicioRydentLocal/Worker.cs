@@ -597,6 +597,26 @@ public class Worker : BackgroundService
 			await RegenerarRdaLote(clientId, idsJson);
 		});
 
+		_hubConnection.On<string, string>("ConsultarPacienteInteroperabilidadExacto", async (clientId, filtroJson) =>
+		{
+			await ConsultarPacienteInteroperabilidadExacto(clientId, filtroJson);
+		});
+
+		_hubConnection.On<string, string>("ConsultarPacienteInteroperabilidadSimilar", async (clientId, filtroJson) =>
+		{
+			await ConsultarPacienteInteroperabilidadSimilar(clientId, filtroJson);
+		});
+
+		_hubConnection.On<string, string>("ConsultarRdaPacienteInteroperabilidad", async (clientId, filtroJson) =>
+		{
+			await ConsultarRdaPacienteInteroperabilidad(clientId, filtroJson);
+		});
+
+		_hubConnection.On<string, string>("ConsultarEncuentrosPacienteInteroperabilidad", async (clientId, filtroJson) =>
+		{
+			await ConsultarEncuentrosPacienteInteroperabilidad(clientId, filtroJson);
+		});
+
 		_hubConnection.On<string>("ObtenerFacturasPendientes", async (clientId) =>
         {
             await ObtenerFacturasPendientes(clientId);
@@ -3831,6 +3851,119 @@ public class Worker : BackgroundService
 
 			var payload = JsonConvert.SerializeObject(respuesta, settings);
 			await _hubConnection.InvokeAsync("RespuestaRegenerarRdaLote", clientId, payload);
+		}
+	}
+	//--------------------------------------Consultar Interoperabilidad------------------------------------//
+	public async Task ConsultarPacienteInteroperabilidadExacto(string clientId, string filtroJson)
+	{
+		try
+		{
+			var filtro = string.IsNullOrWhiteSpace(filtroJson)
+				? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro()
+				: JsonConvert.DeserializeObject<ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro>(filtroJson)
+				  ?? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro();
+
+			var service = new InteroperabilidadConsultaPacienteService(_configuration);
+			var respuesta = await service.ConsultarPacienteExactoAsync(filtro);
+
+			var payload = JsonConvert.SerializeObject(respuesta);
+			await _hubConnection.InvokeAsync("RespuestaConsultarPacienteInteroperabilidadExacto", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				mensaje = ex.Message,
+				paciente = (object)null
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarPacienteInteroperabilidadExacto", clientId, payload);
+		}
+	}
+
+	public async Task ConsultarPacienteInteroperabilidadSimilar(string clientId, string filtroJson)
+	{
+		try
+		{
+			var filtro = string.IsNullOrWhiteSpace(filtroJson)
+				? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro()
+				: JsonConvert.DeserializeObject<ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro>(filtroJson)
+				  ?? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro();
+
+			var service = new InteroperabilidadConsultaPacienteService(_configuration);
+			var respuesta = await service.ConsultarPacienteSimilarAsync(filtro);
+
+			var payload = JsonConvert.SerializeObject(respuesta);
+			await _hubConnection.InvokeAsync("RespuestaConsultarPacienteInteroperabilidadSimilar", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				mensaje = ex.Message,
+				items = new object[] { }
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarPacienteInteroperabilidadSimilar", clientId, payload);
+		}
+	}
+
+	public async Task ConsultarRdaPacienteInteroperabilidad(string clientId, string filtroJson)
+	{
+		try
+		{
+			var filtro = string.IsNullOrWhiteSpace(filtroJson)
+				? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro()
+				: JsonConvert.DeserializeObject<ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro>(filtroJson)
+				  ?? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro();
+
+			var service = new InteroperabilidadConsultaPacienteService(_configuration);
+			var respuesta = await service.ConsultarRdaPacienteAsync(filtro);
+
+			var payload = JsonConvert.SerializeObject(respuesta);
+			await _hubConnection.InvokeAsync("RespuestaConsultarRdaPacienteInteroperabilidad", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				mensaje = ex.Message,
+				items = new object[] { }
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarRdaPacienteInteroperabilidad", clientId, payload);
+		}
+	}
+
+	public async Task ConsultarEncuentrosPacienteInteroperabilidad(string clientId, string filtroJson)
+	{
+		try
+		{
+			var filtro = string.IsNullOrWhiteSpace(filtroJson)
+				? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro()
+				: JsonConvert.DeserializeObject<ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro>(filtroJson)
+				  ?? new ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad.InteroperabilidadPacienteFiltro();
+
+			var service = new InteroperabilidadConsultaPacienteService(_configuration);
+
+			var respuesta = await service.ConsultarEncuentrosClinicosAsync(filtro);
+
+			var payload = JsonConvert.SerializeObject(respuesta);
+			await _hubConnection.InvokeAsync("RespuestaConsultarEncuentrosPacienteInteroperabilidad", clientId, payload);
+		}
+		catch (Exception ex)
+		{
+			var payload = JsonConvert.SerializeObject(new
+			{
+				ok = false,
+				mensaje = ex.Message,
+				items = new object[] { }
+			});
+
+			await _hubConnection.InvokeAsync("RespuestaConsultarEncuentrosPacienteInteroperabilidad", clientId, payload);
 		}
 	}
 	//------------------------------------------------------------------------------------------------//

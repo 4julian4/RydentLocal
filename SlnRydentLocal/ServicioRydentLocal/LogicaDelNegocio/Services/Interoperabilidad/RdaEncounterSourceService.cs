@@ -95,6 +95,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Interoperabilidad
 				CodigoDepartamento = codigoDepartamento,
 				NombreCiudad = nombreCiudad,
 				NombreDepartamento = nombreDepartamento,
+				ZonaRecidencial = !string.IsNullOrWhiteSpace(paciente?.ZONA_RECIDENCIAL)
+					? paciente.ZONA_RECIDENCIAL.Trim()
+					: null,
 
 				CodigoEps = codigoEps,
 				NombreEps = nombreEps,

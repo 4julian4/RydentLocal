@@ -26,6 +26,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos.Interoperabilidad
 		public string? CodigoDepartamento { get; set; }
 		public string? NombreCiudad { get; set; }
 		public string? NombreDepartamento { get; set; }
+		public string? ZonaRecidencial { get; set; }
 
 		public string? CodigoEps { get; set; }
 		public string? NombreEps { get; set; }

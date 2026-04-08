@@ -94,7 +94,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Interoperabilidad
 			{
 				resourceType = "Bundle",
 				language = "es-CO",
-				type = "document"
+				type = "document",
+				timestamp = fechaDoc
 			};
 
 			var composition = new FhirComposition
@@ -406,8 +407,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Interoperabilidad
 				valueCoding = new FhirCoding
 				{
 					system = SystemResidenceZone,
-					code = "01",
-					display = "Urbana"
+					code = MapResidenceZoneCode(encounter.ZonaRecidencial),
+					display = MapResidenceZoneDisplay(encounter.ZonaRecidencial)
 				}
 			});
 
@@ -990,6 +991,29 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Interoperabilidad
 				return deptDigits + cityDigits;
 
 			return null;
+		}
+
+		private static string MapResidenceZoneCode(string zonaRecidencial)
+		{
+			var value = (zonaRecidencial ?? string.Empty).Trim().ToUpperInvariant();
+
+			if (value == "RURAL")
+				return "02";
+
+			if (value == "URBANA")
+				return "01";
+
+			return "01";
+		}
+
+		private static string MapResidenceZoneDisplay(string zonaRecidencial)
+		{
+			var value = (zonaRecidencial ?? string.Empty).Trim().ToUpperInvariant();
+
+			if (value == "RURAL")
+				return "Rural";
+
+			return "Urbana";
 		}
 	}
 }
