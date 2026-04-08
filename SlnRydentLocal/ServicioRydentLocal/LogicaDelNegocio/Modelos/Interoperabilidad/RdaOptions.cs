@@ -18,6 +18,11 @@
 		public string? EnviarRdaConsultaPath { get; set; }
 		public string? EnviarRdaPacientePath { get; set; }
 
+		public string? ConsultarPacienteExactoPath { get; set; }
+		public string? ConsultarPacienteSimilarPath { get; set; }
+		public string? ConsultarRdaPacientePath { get; set; }
+		public string? ConsultarEncuentrosClinicosPath { get; set; }
+
 		// OAuth2
 		public string? TokenUrl { get; set; }
 		public string? TokenUrlTemplate { get; set; }
@@ -25,6 +30,9 @@
 		public string? ClientId { get; set; }
 		public string? ClientSecret { get; set; }
 		public string? Scope { get; set; }
+
+		//provicional para prueba
+		public int? DefaultIdInformacionReporteConsulta { get; set; }
 
 		// APIM
 		public string? SubscriptionKey { get; set; }
@@ -94,6 +102,38 @@
 				return BaseUrl.Trim().TrimEnd('/');
 
 			return $"{BaseUrl.Trim().TrimEnd('/')}/{path.Trim().TrimStart('/')}";
+		}
+
+		public string? ResolveConsultarPacienteExactoUrl()
+		{
+			if (string.IsNullOrWhiteSpace(BaseUrl) || string.IsNullOrWhiteSpace(ConsultarPacienteExactoPath))
+				return null;
+
+			return $"{BaseUrl.Trim().TrimEnd('/')}/{ConsultarPacienteExactoPath.Trim().TrimStart('/')}";
+		}
+
+		public string? ResolveConsultarPacienteSimilarUrl()
+		{
+			if (string.IsNullOrWhiteSpace(BaseUrl) || string.IsNullOrWhiteSpace(ConsultarPacienteSimilarPath))
+				return null;
+
+			return $"{BaseUrl.Trim().TrimEnd('/')}/{ConsultarPacienteSimilarPath.Trim().TrimStart('/')}";
+		}
+
+		public string? ResolveConsultarRdaPacienteUrl()
+		{
+			if (string.IsNullOrWhiteSpace(BaseUrl) || string.IsNullOrWhiteSpace(ConsultarRdaPacientePath))
+				return null;
+
+			return $"{BaseUrl.Trim().TrimEnd('/')}/{ConsultarRdaPacientePath.Trim().TrimStart('/')}";
+		}
+
+		public string? ResolveConsultarEncuentrosClinicosUrl()
+		{
+			if (string.IsNullOrWhiteSpace(BaseUrl) || string.IsNullOrWhiteSpace(ConsultarEncuentrosClinicosPath))
+				return null;
+
+			return $"{BaseUrl.Trim().TrimEnd('/')}/{ConsultarEncuentrosClinicosPath.Trim().TrimStart('/')}";
 		}
 	}
 }
