@@ -468,7 +468,12 @@ public class Worker : BackgroundService
             await RecibirPinRydent(pin, clientId, maxIdAnamnesis);
         });
 
-        _hubConnection.On<string, string>("ObtenerDoctor", async (clientId, idDoctor) =>
+		_hubConnection.On<string, int>("RecibirLotePacientesAgenda", async (clientId, maxIdAnamnesis) =>
+		{
+			await RecibirLotePacientesAgenda(clientId, maxIdAnamnesis);
+		});
+
+		_hubConnection.On<string, string>("ObtenerDoctor", async (clientId, idDoctor) =>
         {
             await ConsultarPorIdDoctor(clientId, Convert.ToInt32(idDoctor));
         });
@@ -531,6 +536,11 @@ public class Worker : BackgroundService
         {
             await GuardarDatosRips(clientId, datosRips);
         });
+
+		_hubConnection.On<string, string>("GenerarRdaDesdeRipsExistente", async (clientId, payloadJson) =>
+		{
+			await GenerarRdaDesdeRipsExistente(clientId, payloadJson);
+		});
 
 		_hubConnection.On<string, string>("ConsultarRipsExistentes", async (clientId, payloadJson) =>
 		{
@@ -772,56 +782,7 @@ public class Worker : BackgroundService
 
 
 
-	/*private bool _isDeviceRegistered = false;
-	private async Task RegisterDeviceAsync(string entrada)
-	{
-		try
-		{
-			if (_hubConnection.State != HubConnectionState.Connected)
-				return;
-
-			// 1) Preguntar si ya hay un activo para esa sede/identificadorLocal
-			var activoId = await _hubConnection.InvokeAsync<string>(
-				"GetActiveConnectionIdByIdentificadorLocal",
-				entrada
-			);
-
-			// ✅ Caso A: no hay activo -> registramos
-			if (string.IsNullOrWhiteSpace(activoId))
-			{
-				await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
-
-				_isDeviceRegistered = true;
-				_logger.LogInformation("Equipo registrado con éxito (no había activo).");
-				return;
-			}
-
-			// ✅ Caso B: el activo soy yo -> ya ok
-			if (string.Equals(activoId, _hubConnection.ConnectionId, StringComparison.Ordinal))
-			{
-				_isDeviceRegistered = true;
-				_logger.LogInformation($"La sede ya está activa y SOY YO. ConnectionId: {activoId}");
-				return;
-			}
-
-			// ✅ Caso C (IMPORTANTE): hay activo pero NO soy yo
-			// Esto pasa típico al reconectar (cambió mi ConnectionId) o si el activo quedó “pegado”.
-			_logger.LogWarning(
-				$"Activo distinto detectado. Activo={activoId} / Yo={_hubConnection.ConnectionId}. " +
-				"Re-registrando para actualizar el activo."
-			);
-
-			await _hubConnection.InvokeAsync("RegistrarEquipo", _hubConnection.ConnectionId, entrada);
-
-			_isDeviceRegistered = true;
-			_logger.LogInformation("Equipo re-registrado con éxito (override del activo).");
-		}
-		catch (Exception ex)
-		{
-			_logger.LogError(ex, $"Error al registrar el equipo: {ex.Message}");
-			_isDeviceRegistered = false;
-		}
-	}*/
+	
 
 	private bool _isDeviceRegistered = false;
 	private long _idSedeDetectada = 0;
@@ -997,9 +958,10 @@ public class Worker : BackgroundService
         var objConfiguracionesRydent = new TCONFIGURACIONES_RYDENTServicios();
         var objTAnamnesisParaAgendayBuscadores = new TANAMNESISServicios();
         respuestaPin.clave = await objPINACCESO.ConsultarPorId(pinacceso);
-        //esto se hace para evitar enviar la clave en el objeto respuestaPin el cual quedaria expuesto en el navegador web
-        if (respuestaPin.clave.CLAVE != null)
-        {
+		//esto se hace para evitar enviar la clave en el objeto respuestaPin el cual quedaria expuesto en el navegador web
+		//if (respuestaPin.clave.CLAVE != null)
+		if (respuestaPin.clave != null && respuestaPin.clave.CLAVE != null)
+		{
             respuestaPin.clave.CLAVE = "";
             respuestaPin.acceso = true;
             var listDoctores = await objDOCTORES.ConsultarTodos();
@@ -1058,7 +1020,35 @@ public class Worker : BackgroundService
         
     }
 
-    public async Task ConsultarPorIdDoctor(string clientId, int idDoctor)
+	public async Task RecibirLotePacientesAgenda(string clientId, int maxIdAnamnesis)
+	{
+		try
+		{
+			var objTAnamnesis = new TANAMNESISServicios();
+
+			var lista = await objTAnamnesis
+				.ConsultarDatosPacientesParaCargarEnAgenda(maxIdAnamnesis);
+
+			var s = JsonConvert.SerializeObject(lista);
+			var comprimido = ArchivosHelper.CompressString(s);
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaLotePacientesAgenda",
+				clientId,
+				comprimido
+			);
+		}
+		catch (Exception ex)
+		{
+			await _hubConnection.InvokeAsync(
+				"ErrorConexion",
+				clientId,
+				"Error cargando lote de pacientes agenda: " + ex.Message
+			);
+		}
+	}
+
+	public async Task ConsultarPorIdDoctor(string clientId, int idDoctor)
     {
         var objDOCTORES = new TDATOSDOCTORESServicios();
         var objAname = new TANAMNESISServicios();
@@ -1698,7 +1688,7 @@ public class Worker : BackgroundService
 	public async Task ObtenerDatosEvolucion(string clientId, int idAnanesis)
     {
         var objEvolucion = new TEVOLUCIONServicios();
-        var listEvolucion = await objEvolucion.ConsultarPorAnamnesis(idAnanesis);
+        var listEvolucion = await objEvolucion.ConsultarPorAnamnesisUltimas50(idAnanesis);
         var respuestaBuscarEvolucion = new List<RespuestaEvolucionPacienteModel>();
         var archivosHelper = new ArchivosHelper();
         foreach (var item in listEvolucion)
@@ -2231,6 +2221,133 @@ public class Worker : BackgroundService
 		{
 			Console.Error.WriteLine($"[Worker] Error GuardarDatosRips: {ex}");
 			await _hubConnection.InvokeAsync("RespuestaGuardarDatosRips", clientId, false, ex.Message);
+		}
+	}
+
+	public async Task GenerarRdaDesdeRipsExistente(string clientId, string payloadJson)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(payloadJson))
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaGenerarRdaDesdeRipsExistente",
+					clientId,
+					false,
+					"Payload vacío.");
+				return;
+			}
+
+			var request = JsonConvert.DeserializeObject<GenerarRdaDesdeRipsRequest>(payloadJson);
+
+			if (request == null)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaGenerarRdaDesdeRipsExistente",
+					clientId,
+					false,
+					"No fue posible deserializar el payload.");
+				return;
+			}
+
+			if (request.IDANAMNESIS <= 0)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaGenerarRdaDesdeRipsExistente",
+					clientId,
+					false,
+					"IDANAMNESIS inválido.");
+				return;
+			}
+
+			if (!request.FECHA.HasValue)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaGenerarRdaDesdeRipsExistente",
+					clientId,
+					false,
+					"FECHA inválida.");
+				return;
+			}
+
+			var horaAtencion = string.IsNullOrWhiteSpace(request.HORA)
+				? (TimeSpan?)null
+				: TimeSpan.Parse(request.HORA);
+
+			var fechaAtencion = request.FECHA.Value.Date;
+			var factura = string.IsNullOrWhiteSpace(request.FACTURA)
+				? null
+				: request.FACTURA.Trim();
+
+			var objRdaDocumentoServicios = new TRDADOCUMENTOServicios();
+
+			var existenteConsulta = await objRdaDocumentoServicios.ConsultarConsultaExistente(
+				request.IDANAMNESIS,
+				fechaAtencion,
+				horaAtencion,
+				"RDA_CONSULTA_INTERNO");
+
+			if (existenteConsulta.ID > 0)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaGenerarRdaDesdeRipsExistente",
+					clientId,
+					false,
+					"Este RIPS ya tiene RDA de consulta generado.");
+				return;
+			}
+
+			var rebuildService = new RdaRipsRebuildService();
+
+			var datosRips = await rebuildService.ReconstruirExactoAsync(
+				request.IDANAMNESIS,
+				fechaAtencion,
+				horaAtencion,
+				factura);
+
+			if (datosRips == null)
+			{
+				await _hubConnection.InvokeAsync(
+					"RespuestaGenerarRdaDesdeRipsExistente",
+					clientId,
+					false,
+					"No se pudo reconstruir el RIPS.");
+				return;
+			}
+
+			var rdaOrquestador = new RdaOrquestadorService(_configuration);
+
+			var resultadoPaciente = await rdaOrquestador.GenerarPacientePorAnamnesisAsync(
+				datosRips.IDANAMNESIS ?? 0,
+				datosRips.IDDOCTOR,
+				datosRips.FECHACONSULTA,
+				true
+			);
+
+			var resultadoConsulta = await rdaOrquestador.GenerarDesdeRipsAsync(
+				datosRips,
+				true
+			);
+
+			var mensajeFinal =
+				$"RDA generado correctamente. " +
+				$"Paciente: {resultadoPaciente.Estado}. " +
+				$"Consulta: {resultadoConsulta.Estado}.";
+
+			await _hubConnection.InvokeAsync(
+				"RespuestaGenerarRdaDesdeRipsExistente",
+				clientId,
+				resultadoConsulta.Ok,
+				mensajeFinal);
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine($"[Worker] Error GenerarRdaDesdeRipsExistente: {ex}");
+			await _hubConnection.InvokeAsync(
+				"RespuestaGenerarRdaDesdeRipsExistente",
+				clientId,
+				false,
+				ex.Message);
 		}
 	}
 

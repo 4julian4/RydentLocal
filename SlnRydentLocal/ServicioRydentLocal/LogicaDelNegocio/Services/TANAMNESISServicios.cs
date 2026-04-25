@@ -104,7 +104,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        /* funciona pero vamos a cambiarlo para probar velocidad
+		/* funciona pero vamos a cambiarlo para probar velocidad
         public async Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda()
         {
             using (var _dbcontext = new AppDbContext())
@@ -133,7 +133,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 
         }*/
 
-        public async Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda(int? maxIdLocal)
+		/*public async Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda(int? maxIdLocal)
         {
             try
             {
@@ -160,12 +160,43 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             {
                 throw;
             }
-        }
+        }*/
+
+		public async Task<List<TANAMNESIS>> ConsultarDatosPacientesParaCargarEnAgenda(int? maxIdLocal)
+		{
+			try
+			{
+				using var _dbcontext = new AppDbContext();
+
+				return await _dbcontext.TANAMNESIS
+					.AsNoTracking()
+					.Where(a => !maxIdLocal.HasValue || a.IDANAMNESIS > maxIdLocal.Value)
+					.OrderBy(a => a.IDANAMNESIS)
+					.Select(a => new TANAMNESIS
+					{
+						IDANAMNESIS = a.IDANAMNESIS,
+						NOMBRE_PACIENTE = a.NOMBRE_PACIENTE,
+						DOCTOR = a.DOCTOR != "No" ? a.DOCTOR : null,
+						TELF_P = a.TELF_P != "No" ? a.TELF_P : null,
+						TELF_P_OTRO = a.TELF_P_OTRO != "No" ? a.TELF_P_OTRO : null,
+						CELULAR_P = a.CELULAR_P != "No" ? a.CELULAR_P : null,
+						CEDULA_NUMERO = a.CEDULA_NUMERO != "No" ? a.CEDULA_NUMERO : null,
+						NRO_AFILIACION = a.NRO_AFILIACION != "No" ? a.NRO_AFILIACION : null,
+						IDANAMNESIS_TEXTO = a.IDANAMNESIS_TEXTO
+					})
+					.Take(20000)
+					.ToListAsync();
+			}
+			catch
+			{
+				throw;
+			}
+		}
 
 
 
 
-        public async Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR)
+		public async Task<List<P_BUSCARPACIENTE>> BuscarPacientePorTipo(int TIPO, string BUSCAR)
         {
             using (var _dbcontext = new AppDbContext())
             {

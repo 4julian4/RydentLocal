@@ -25,7 +25,7 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services.Interoperabilidad
 					where d.ID == idDoctor.Value
 					select new RdaPrestadorSource
 					{
-						CodigoPrestador = i != null ? i.CODIGO_PRESTADOR : null,
+						CodigoPrestador = i != null ? i.CODIGO_PRESTADOR_PPAL : null,
 						NombrePrestador = i != null ? i.NOMBRE : null,
 						NitPrestador = i != null ? i.NIT : null,
 						TipoDocumentoPrestador = i != null ? i.TIPO_ID : null,
