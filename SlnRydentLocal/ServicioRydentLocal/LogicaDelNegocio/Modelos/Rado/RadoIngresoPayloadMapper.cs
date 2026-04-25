@@ -38,6 +38,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 				Telefono = Clean(row.telefono, 20),
 				Correo_electronico = Clean(row.Correo_electronico, 70),
 
+				Convenio = Clean(row.Convenio, 100),
+				CorreoConvenio = Clean(row.CorreoConvenio, 150),
+
 				Personal_codigo = Clean(row.Personal_codigo, 30),
 				Personal = Clean(row.Personal, 100),
 				Especialidad = Clean(row.ESPECIALIDAD, 100),

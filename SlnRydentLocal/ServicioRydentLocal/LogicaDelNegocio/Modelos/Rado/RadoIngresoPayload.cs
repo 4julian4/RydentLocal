@@ -110,6 +110,12 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos.Rado
 		[JsonPropertyName("Equipo_modalidad")]
 		public int? Equipo_modalidad { get; set; }
 
+		[JsonPropertyName("CONVENIO")]
+		public string? Convenio { get; set; }
+
+		[JsonPropertyName("CORREO_CONVENIO")]
+		public string? CorreoConvenio { get; set; }
+
 		[JsonPropertyName("_token")]
 		public string? Token { get; set; }
 

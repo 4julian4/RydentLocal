@@ -103,5 +103,11 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Modelos.Rado
 
 		[Column("ingreso")]
 		public decimal? ingreso { get; set; }
+
+		[Column("CONVENIO")]
+		public string? Convenio { get; set; }
+
+		[Column("CORREO_CONVENIO")]
+		public string? CorreoConvenio { get; set; }
 	}
 }

@@ -92,7 +92,9 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
 				Id_Orden = rd["ID_ORDEN"]?.ToString(),
 				Id_paciente = rd["ID_PACIENTE"] is DBNull ? null : Convert.ToInt32(rd["ID_PACIENTE"]),
 				Id_ingreso = rd["ID_INGRESO"] is DBNull ? null : Convert.ToInt64(rd["ID_INGRESO"]),
-				ingreso = rd["INGRESO"] is DBNull ? null : Convert.ToDecimal(rd["INGRESO"])
+				ingreso = rd["INGRESO"] is DBNull ? null : Convert.ToDecimal(rd["INGRESO"]),
+				Convenio = rd["CONVENIO"]?.ToString(),
+				CorreoConvenio = rd["CORREO_CONVENIO"]?.ToString()
 			};
 		}
 
@@ -211,13 +213,16 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
                 TRIM(aa.RECIBO_RELACIONADO) as Id_Orden, 
                 a.IDANAMNESIS_TEXTO as Id_paciente,
                 aa.IDRELACION as Id_ingreso,
-                aa.VALOR as ingreso 
+                aa.VALOR as ingreso,
+				a.CONVENIO as CONVENIO,
+				cv.DIRECCION as CORREO_CONVENIO
             from TANAMNESIS a
             inner join T_ADICIONALES_ABONOS aa on aa.id = a.idanamnesis
             inner join TDATOSDOCTORES dd1 on dd1.ID = aa.IDDOCTOR 
             inner join TINFORMACIONREPORTES ir on ir.ID = dd1.IDREPORTE
             inner join TDATOSDOCTORES dd on dd.ID = aa.recibido_por 
             left join TCODIGOS_EPS ep on ep.CODIGO = a.CODIGO_EPS
+			left join T_CONVENIOS cv on cv.NOMBRE = a.CONVENIO
             where aa.IDRELACION = @idRelacion
             ";
 

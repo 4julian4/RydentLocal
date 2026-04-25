@@ -90,7 +90,24 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
             }
         }
 
-        public async Task<TEVOLUCION> ConsultarPorAnamnesisFechaYHora(int IDEVOLUSECUND, DateTime FECHA, TimeSpan HORA)
+		public async Task<List<TEVOLUCION>> ConsultarPorAnamnesisUltimas50(int IDEVOLUSECUND)
+		{
+			using (var _dbcontext = new AppDbContext())
+			{
+				var obj = await _dbcontext.TEVOLUCION
+					.AsNoTracking()
+					.Where(x => x.IDEVOLUSECUND == IDEVOLUSECUND)
+					.OrderByDescending(x => x.FECHA)
+					.ThenByDescending(x => x.HORA)
+					.Take(50)
+					.ToListAsync();
+
+				return obj ?? new List<TEVOLUCION>();
+			}
+		}
+
+
+		public async Task<TEVOLUCION> ConsultarPorAnamnesisFechaYHora(int IDEVOLUSECUND, DateTime FECHA, TimeSpan HORA)
         {
             using (var _dbcontext = new AppDbContext())
             {
@@ -128,7 +145,8 @@ namespace ServicioRydentLocal.LogicaDelNegocio.Services
         Task<bool> Editar(int IDEVOLUCION, TEVOLUCION tevolucion);
         Task<TEVOLUCION> ConsultarPorIdEvolucion(int IDEVOLUCION);
         Task<List<TEVOLUCION>> ConsultarPorAnamnesis(int IDEVOLUSECUND);
-        Task<TEVOLUCION> ConsultarPorAnamnesisFechaYHora(int IDEVOLUSECUND, DateTime FECHA, TimeSpan HORA);
+		Task<List<TEVOLUCION>> ConsultarPorAnamnesisUltimas50(int IDEVOLUSECUND);
+		Task<TEVOLUCION> ConsultarPorAnamnesisFechaYHora(int IDEVOLUSECUND, DateTime FECHA, TimeSpan HORA);
         Task<TEVOLUCION> ConsultarUltimaEvolucion(int IDEVOLUSECUND);
         Task Borrar(int IDEVOLUCION);
     }
